@@ -1,5 +1,6 @@
-import { aiStatus } from "@/lib/ai/provider";
-import { ok } from "@/lib/api";
+import { getDb } from "@/lib/db";
+import { learnerAiStatus } from "@/lib/ai/learner";
+import { handle, ok } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
-export const GET = () => ok(aiStatus());
+export const GET = handle(async () => ok(await learnerAiStatus(await getDb())));

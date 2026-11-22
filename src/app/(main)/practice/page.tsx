@@ -4,7 +4,7 @@ import { Bot, Route, Target } from "lucide-react";
 import { getDb, schema } from "@/lib/db";
 import { scenariosFor } from "@/lib/content/scenarios";
 import { orderedSkills } from "@/lib/content/curriculum";
-import { aiStatus } from "@/lib/ai/provider";
+import { learnerAiStatus } from "@/lib/ai/learner";
 import { learnerLevel } from "@/lib/services/conversations";
 import { getSettings } from "@/lib/services/stats";
 import { loadProgress } from "@/lib/services/progress";
@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 
 export default async function PracticePage() {
   const db = await getDb();
-  const status = aiStatus();
+  const status = await learnerAiStatus(db);
   const settings = await getSettings(db);
   const aiOn = status.configured && settings.aiEnabled;
   const level = await learnerLevel(db);
@@ -40,8 +40,8 @@ export default async function PracticePage() {
 
       {!aiOn && (
         <p className="rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-muted">
-          No AI provider is configured, so conversations follow guided scripts that understand free-typed replies and correct common mistakes.
-          Add an Anthropic key or a local Ollama model (see Settings) for open-ended conversations.
+          AI is off, so conversations follow guided scripts that understand free-typed replies and correct common mistakes.
+          Add your own Anthropic API key in Settings → AI tutor for open-ended conversations.
         </p>
       )}
 

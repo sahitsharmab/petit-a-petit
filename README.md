@@ -25,9 +25,9 @@ honest scoring, and everything stored on your own machine. It works fully offlin
 |---|---|
 | **Stack** | Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · SQLite / Turso (libSQL + Drizzle ORM) · Zod |
 | **Hosting** | Local (single learner) or Vercel + Turso with logins and one database per learner |
-| **AI (optional)** | Anthropic Claude or a local Ollama model, schema-validated with automatic local fallback |
+| **AI (optional)** | Each learner's own Anthropic key (encrypted) or a server-wide Claude / local Ollama setup, schema-validated with automatic local fallback |
 | **Voice** | Browser Web Speech API (no key, no cloud service of ours) |
-| **Quality** | 146 Vitest unit/integration tests · Playwright end-to-end test · ESLint · strict TypeScript |
+| **Quality** | 152 Vitest unit/integration tests · Playwright end-to-end test · ESLint · strict TypeScript |
 
 ## Quick start
 
@@ -98,7 +98,10 @@ into an account learning the same language.
 - Sessions last 30 days. Changing `SESSION_SECRET` signs everyone out.
 - Failed logins are rate-limited (8 per 15 minutes per client and server instance), and
   sign-ups to 5 per hour per client, since each one creates a database.
-- AI stays off unless you add `AI_PROVIDER` and a key, which is shared by everyone signed in.
+- AI is off until a learner adds their own Anthropic key in Settings → AI tutor (encrypted,
+  billed to them, invisible to the other learner). No extra Vercel variable is needed: it's
+  encrypted with a key derived from `SESSION_SECRET` (or `AI_KEY_SECRET` if you set one).
+  Local Ollama models don't work on Vercel.
 - Reminders work while a tab of the site is open, as before.
 - Local accounts (for testing): set `ACCOUNTS_DB_URL=data/accounts.db` and a `SESSION_SECRET`
   in `.env.local`. Without Turso API settings, each account's data goes to `data/<username>.db`.
@@ -147,8 +150,17 @@ with recently used items avoided.
 
 ## Optional AI (Anthropic Claude or Ollama)
 
-The app is fully usable without AI. To enable it, create `.env.local` next to `package.json`
-and restart:
+The app is fully usable without AI. The easiest way to turn it on is **Settings → AI tutor**:
+each learner pastes their own Anthropic API key and picks a model (Opus 5.5, Sonnet 5.5 or
+Haiku 5.5). The key is checked with Anthropic before it's saved, stored encrypted (AES-256-GCM)
+in that learner's own database, never shown again (only its last 4 characters), never exported,
+and used only for that learner, so each person's AI usage is billed to their own account. The
+encryption secret comes from `AI_KEY_SECRET`, or `SESSION_SECRET` if that isn't set (locally
+without either, a random one is created in `data/ai-secret.key`). Changing the secret means
+learners re-enter their key.
+
+Alternatively, the person running the server can set one shared provider in `.env.local`
+(learners who saved their own key still use theirs):
 
 ```bash
 # Claude
@@ -166,7 +178,7 @@ OLLAMA_BASE_URL=http://127.0.0.1:11434
 
 What AI adds:
 - **Lesson enrichment:** a personal intro (mentioning recent struggles), fresh examples, and up to 2 exercises plus a dialogue merged into the locally assembled lesson.
-- **Flexible translation checking:** if a free-form answer isn't in the accepted list, the AI judges whether it is *correct* French (it never accepts merely understandable French).
+- **Flexible translation checking:** if a free-form answer isn't in the accepted list, the AI judges whether it is *correct* French or German (it never accepts merely understandable answers).
 - **Open conversations** with gentle corrections, suggestions, explanations and an end-of-conversation summary.
 
 Safety rails: keys are read only on the server. Every AI output must pass a strict Zod schema plus

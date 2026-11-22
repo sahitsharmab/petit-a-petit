@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, BellRing, Bot, Check, Download, Loader2, Upload, Volume2 } from "lucide-react";
+import { AlertTriangle, BellRing, Check, Download, Loader2, Upload, Volume2 } from "lucide-react";
 import { api } from "@/lib/client";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { ThemeToggle } from "@/components/shell/theme-toggle";
 import { useSpeech } from "@/components/speech/use-speech";
 import { useCourse } from "@/components/course/course-context";
-import type { AiStatus } from "@/lib/ai/provider";
+import type { AiStatus } from "@/lib/ai/models";
+import { AiCard } from "./ai-card";
 
 interface Settings {
   displayName: string; dailyGoalMinutes: number; reminderEnabled: boolean; reminderTime: string; aiEnabled: boolean;
@@ -29,7 +30,7 @@ function Row({ label, description, children, htmlFor }: { label: string; descrip
   );
 }
 
-export function SettingsForm({ initial, ai }: { initial: Settings; ai: AiStatus }) {
+export function SettingsForm({ initial, ai, hosted }: { initial: Settings; ai: AiStatus; hosted: boolean }) {
   const router = useRouter();
   const [s, setS] = React.useState(initial);
   const [saved, setSaved] = React.useState(false);
@@ -109,32 +110,7 @@ export function SettingsForm({ initial, ai }: { initial: Settings; ai: AiStatus 
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader><div><CardTitle className="flex items-center gap-2"><Bot className="size-4 text-subtle" /> AI tutor</CardTitle><CardDescription>Optional. Everything works offline without it.</CardDescription></div></CardHeader>
-        <CardContent className="divide-y divide-border">
-          <Row label="Provider" description={ai.configured ? <>Connected: <span className="font-medium text-ink">{ai.provider}</span> · {ai.model}</> : ai.reason}>
-            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${ai.configured ? "bg-success-soft text-success" : "bg-surface-2 text-muted"}`}>
-              <span className={`size-1.5 rounded-full ${ai.configured ? "bg-success" : "bg-subtle"}`} /> {ai.configured ? "Available" : "Offline mode"}
-            </span>
-          </Row>
-          <Row label="Use AI features" description="Fresh examples and exercises in new lessons, flexible checking of translations, open conversations and feedback.">
-            <Switch checked={s.aiEnabled} disabled={!ai.configured} onCheckedChange={(v) => save({ aiEnabled: v })} aria-label="Use AI features" />
-          </Row>
-          {!ai.configured && (
-            <div className="pt-4 text-sm text-muted">
-              <p>To enable, create a <code className="rounded bg-surface-2 px-1">.env.local</code> file in the project folder and restart the app:</p>
-              <pre className="mt-2 overflow-x-auto rounded-xl bg-surface-2 p-3 text-xs text-ink">{`# Anthropic (Claude)
-AI_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-...
-
-# or a local model with Ollama
-AI_PROVIDER=ollama
-OLLAMA_MODEL=llama3.1:8b`}</pre>
-              <p className="mt-2">Keys stay on the server side of this app and are never sent to the browser.</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <AiCard ai={ai} hosted={hosted} aiEnabled={s.aiEnabled} onToggle={(v) => save({ aiEnabled: v })} />
 
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><Volume2 className="size-4 text-subtle" /> Audio & display</CardTitle></CardHeader>

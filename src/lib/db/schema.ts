@@ -189,6 +189,20 @@ export const learningSettings = sqliteTable("learning_settings", {
  */
 export const NEW_LEARNER_SETTINGS = { id: 1, autoPlayAudio: false };
 
+/**
+ * The learner's own AI provider key (one row). The key is encrypted (AES-256-GCM) with a
+ * server-side secret; only the last characters are kept in clear for display.
+ * Never exported, never sent to the browser, and kept when progress is reset.
+ */
+export const aiCredentials = sqliteTable("ai_credentials", {
+  id: integer("id").primaryKey(),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  keyEncrypted: text("key_encrypted").notNull(),
+  keyHint: text("key_hint").notNull(),
+  updatedAt: text("updated_at").notNull().default(now),
+});
+
 /** Cache of validated AI outputs keyed by request hash. */
 export const aiCache = sqliteTable("ai_cache", {
   key: text("key").primaryKey(),

@@ -1,10 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 /**
- * LLM provider adapter. Server-side only — API keys come from environment
- * variables and never reach the browser.
+ * LLM provider adapter. Server-side only — API keys (a learner's own, stored encrypted, or the
+ * server's from environment variables) never reach the browser. See ./learner for per-learner keys.
  */
-export type ProviderName = "anthropic" | "ollama";
+import type { AiStatus, ProviderName } from "./models";
+export { ANTHROPIC_MODELS, isAnthropicModel, type AiStatus, type AnthropicModel, type ProviderName } from "./models";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -18,13 +19,7 @@ export interface Provider {
   complete(opts: { system: string; messages: ChatMessage[]; maxTokens?: number; timeoutMs?: number; json?: boolean }): Promise<string>;
 }
 
-export interface AiStatus {
-  provider: ProviderName | "none";
-  model: string | null;
-  configured: boolean;
-  reason?: string;
-}
-
+/** The deployment-wide provider from environment variables. */
 export function aiStatus(): AiStatus {
   const p = (process.env.AI_PROVIDER ?? "none").toLowerCase();
   if (p === "anthropic") {
@@ -37,13 +32,18 @@ export function aiStatus(): AiStatus {
   return { provider: "none", model: null, configured: false, reason: "AI_PROVIDER is not set — running fully offline." };
 }
 
-class AnthropicProvider implements Provider {
+export class AnthropicProvider implements Provider {
   name = "anthropic" as const;
   private client: Anthropic;
-  constructor(public model: string) {
-    this.client = new Anthropic({ maxRetries: 1 });
+  /** apiKey: a learner's own key; omitted = the server's ANTHROPIC_API_KEY. */
+  constructor(public model: string, apiKey?: string) {
+    this.client = new Anthropic({ maxRetries: 1, ...(apiKey ? { apiKey } : {}) });
   }
   async complete({ system, messages, maxTokens = 2000, timeoutMs = 45_000 }: Parameters<Provider["complete"]>[0]) {
+    // Haiku has no server-side refusal fallback; the other models opt in to it.
+    const fallback = this.model.startsWith("claude-haiku")
+      ? {}
+      : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const };
     const response = await this.client.beta.messages.create(
       {
         model: this.model,
@@ -52,9 +52,7 @@ class AnthropicProvider implements Provider {
         messages,
         // Tutoring replies are short; low effort keeps them fast.
         output_config: { effort: "low" },
-        // Server-side fallback if a request is declined by safety classifiers.
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
+        ...fallback,
       },
       { timeout: timeoutMs },
     );

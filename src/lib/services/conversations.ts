@@ -9,7 +9,7 @@ import { looseAnswer, tokenize } from "@/lib/french/normalize";
 import { parisDate } from "@/lib/learning/dates";
 import { frontierSkill } from "@/lib/learning/planner";
 import { askJson } from "@/lib/ai/features";
-import { getProvider } from "@/lib/ai/provider";
+import { providerFor } from "@/lib/ai/learner";
 import { ConversationSummarySchema, ConversationTurnSchema, HelpSchema, type ConversationSummary } from "@/lib/ai/schemas";
 import { loadProgress } from "./progress";
 import { HttpError } from "@/lib/http-error";
@@ -65,7 +65,7 @@ const now = () => new Date().toISOString();
 /** The AI provider, but only while AI is switched on in Settings. Checked at every provider call. */
 async function allowedProvider(db: DB) {
   const settings = await db.select().from(schema.learningSettings).where(eq(schema.learningSettings.id, 1)).get();
-  return settings?.aiEnabled === false ? null : getProvider();
+  return settings?.aiEnabled === false ? null : providerFor(db);
 }
 
 export async function startConversation(db: DB, scenarioId: string, date: Date = new Date()): Promise<ConversationRecord> {
