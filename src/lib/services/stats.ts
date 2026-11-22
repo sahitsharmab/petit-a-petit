@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, isNotNull, lte, sql } from "drizzle-orm";
 import type { DB } from "@/lib/db";
 import { schema } from "@/lib/db";
-import { ORDERED_SKILLS, SKILLS, WEEKS, getSkill } from "@/lib/content/curriculum";
+import { courseSkills, courseWeeks, getSkill, orderedSkills } from "@/lib/content/curriculum";
 import { addDays, parisDate, startOfWeek } from "@/lib/learning/dates";
 import { effectiveMastery } from "@/lib/learning/mastery";
 import { frontierSkill, type LessonPlan } from "@/lib/learning/planner";
@@ -18,6 +18,8 @@ export const MISTAKE_LABELS: Record<string, string> = {
   elision: "Elision (j', n', l', qu')",
   negation: "Negation (ne … pas)",
   tense: "Choosing the right tense",
+  "wrong-form": "Verb form doesn't match the subject",
+  umlauts: "Umlauts and ß",
 };
 
 export function mistakeLabel(tag: string): string {
@@ -92,7 +94,8 @@ export async function getDashboard(db: DB, now: Date = new Date()) {
   const today = parisDate(now);
   const settings = await getSettings(db);
   const progress = await loadProgress(db);
-  const frontier = frontierSkill({ progress });
+  const frontier = frontierSkill({ progress, lang: db.lang });
+  const SKILLS = courseSkills(db.lang);
   const dates = await loadStudyDates(db);
   const streak = computeStreak(dates, today);
   const card = await todayCard(db, now);
@@ -105,7 +108,7 @@ export async function getDashboard(db: DB, now: Date = new Date()) {
     return { date, minutes: Math.round((a?.seconds ?? 0) / 60), sessions: a?.sessions ?? 0, isToday: date === today, isFuture: date > today };
   });
 
-  const curriculum = ORDERED_SKILLS.filter((s) => s.category !== "review");
+  const curriculum = orderedSkills(db.lang).filter((s) => s.category !== "review");
   const passed = curriculum.filter((s) => progress[s.id]?.passedAt).length;
   const mastered = SKILLS.filter((s) => (progress[s.id]?.mastery ?? 0) >= 0.85 && (progress[s.id]?.attempts ?? 0) >= 6).length;
 
@@ -242,7 +245,7 @@ export async function getProgressData(db: DB, now: Date = new Date()) {
   const reviewed = await db.select({ type: schema.reviewSchedule.itemType, n: sql<number>`count(*)` }).from(schema.reviewSchedule).groupBy(schema.reviewSchedule.itemType).all();
   const reviewedMap = Object.fromEntries(reviewed.map((r) => [r.type, Number(r.n)]));
 
-  const skills = ORDERED_SKILLS.map((s) => {
+  const skills = orderedSkills(db.lang).map((s) => {
     const p = progress[s.id];
     return {
       id: s.id, title: s.title, short: s.short, week: s.week, category: s.category,
@@ -251,7 +254,7 @@ export async function getProgressData(db: DB, now: Date = new Date()) {
       accuracy: p && p.attempts ? p.correct / p.attempts : null,
     };
   });
-  const weeks = WEEKS.map((w) => {
+  const weeks = courseWeeks(db.lang).map((w) => {
     const ws = skills.filter((s) => s.week === w.number && s.category !== "review");
     const all = skills.filter((s) => s.week === w.number);
     return { number: w.number, title: w.title, passed: ws.filter((s) => s.passed).length, total: ws.length || all.length, mastery: all.reduce((a, s) => a + s.mastery, 0) / all.length };
@@ -274,7 +277,7 @@ export async function getProgressData(db: DB, now: Date = new Date()) {
       studyDays: dates.length,
       itemsReviewed: Object.entries(reviewedMap).filter(([k]) => k !== "skill").reduce((a, [, v]) => a + v, 0),
       phrasesReviewed: (reviewedMap.sent ?? 0) + (reviewedMap.mcq ?? 0) + (reviewedMap.dlg ?? 0),
-      formsReviewed: (reviewedMap.conj ?? 0) + (reviewedMap.gtr ?? 0),
+      formsReviewed: (reviewedMap.conj ?? 0) + (reviewedMap.gtr ?? 0) + (reviewedMap.drill ?? 0),
     },
     heatmap, weekly, monthly, accuracy, mistakes, troubleItems, skills, weeks,
     curriculum: { passed: curriculum.filter((s) => s.passed).length, total: curriculum.length },
@@ -288,6 +291,8 @@ function tipFor(tag: string): string {
     case "auxiliary": return "Movement & change-of-state verbs and all reflexives take être.";
     case "agreement": return "With être, add -e for feminine and -s for plural subjects.";
     case "accents": return "Accents change meaning (a / à, ou / où, parle / parlé).";
+    case "umlauts": return "Umlauts change meaning: schon (already) / schön (beautiful), zahlen (pay) / zählen (count).";
+    case "wrong-form": return "Say the subject out loud with the verb: ich → -e, du → -st, er/sie/es → -t, wir/sie/Sie → -en, ihr → -t.";
     case "elision": return "je, ne, le, la, de, que drop their vowel before a vowel sound.";
     case "negation": return "Two parts around the conjugated verb: ne … pas.";
     case "tense": return "Check the time marker: hier → passé composé, demain → futur proche.";

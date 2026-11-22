@@ -1,16 +1,19 @@
 "use client";
 import * as React from "react";
+import { useCourse } from "@/components/course/course-context";
 
-/** Pick the best available French voice (fr-FR preferred, natural/neural voices first). */
-function pickVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
-  const fr = voices.filter((v) => v.lang?.toLowerCase().startsWith("fr"));
-  if (!fr.length) return null;
+/** Pick the best available voice for a language (e.g. fr-FR / de-DE preferred, natural/neural voices first). */
+function pickVoice(voices: SpeechSynthesisVoice[], tag: string): SpeechSynthesisVoice | null {
+  const prefix = tag.slice(0, 2).toLowerCase();
+  const matching = voices.filter((v) => v.lang?.toLowerCase().startsWith(prefix));
+  if (!matching.length) return null;
   const score = (v: SpeechSynthesisVoice) =>
-    (v.lang.toLowerCase() === "fr-fr" ? 4 : 0) + (/natural|neural|premium|enhanced|google/i.test(v.name) ? 2 : 0) + (v.localService ? 1 : 0);
-  return [...fr].sort((a, b) => score(b) - score(a))[0];
+    (v.lang.toLowerCase() === tag.toLowerCase() ? 4 : 0) + (/natural|neural|premium|enhanced|google/i.test(v.name) ? 2 : 0) + (v.localService ? 1 : 0);
+  return [...matching].sort((a, b) => score(b) - score(a))[0];
 }
 
 export function useSpeech(defaultRate = 0.9) {
+  const tag = useCourse().speech;
   const [supported, setSupported] = React.useState(false);
   const [voice, setVoice] = React.useState<SpeechSynthesisVoice | null>(null);
   const [speaking, setSpeaking] = React.useState(false);
@@ -18,35 +21,36 @@ export function useSpeech(defaultRate = 0.9) {
   React.useEffect(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     setSupported(true);
-    const load = () => setVoice(pickVoice(window.speechSynthesis.getVoices()));
+    const load = () => setVoice(pickVoice(window.speechSynthesis.getVoices(), tag));
     load();
     window.speechSynthesis.addEventListener?.("voiceschanged", load);
     return () => {
       window.speechSynthesis.removeEventListener?.("voiceschanged", load);
       window.speechSynthesis.cancel();
     };
-  }, []);
+  }, [tag]);
 
   const speak = React.useCallback((text: string, rate = defaultRate) => {
     if (!supported || !text) return;
     const synth = window.speechSynthesis;
     synth.cancel();
     const u = new SpeechSynthesisUtterance(text.replace(/___/g, "…"));
-    u.lang = "fr-FR";
+    u.lang = tag;
     if (voice) u.voice = voice;
     u.rate = rate;
     u.onstart = () => setSpeaking(true);
     u.onend = u.onerror = () => setSpeaking(false);
     synth.speak(u);
-  }, [supported, voice, defaultRate]);
+  }, [supported, voice, defaultRate, tag]);
 
   const stop = React.useCallback(() => { if (supported) window.speechSynthesis.cancel(); setSpeaking(false); }, [supported]);
 
-  return { supported, hasFrenchVoice: !!voice, speak, stop, speaking };
+  return { supported, hasVoice: !!voice, speak, stop, speaking };
 }
 
 /** Browser speech recognition (Chrome/Edge/Safari) for optional spoken answers. */
 export function useSpeechInput(onResult: (text: string) => void) {
+  const tag = useCourse().speech;
   const [supported, setSupported] = React.useState(false);
   const [listening, setListening] = React.useState(false);
   const recRef = React.useRef<{ start(): void; stop(): void; abort(): void } | null>(null);
@@ -63,7 +67,7 @@ export function useSpeechInput(onResult: (text: string) => void) {
       onresult: (e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void;
       onend: () => void; onerror: () => void; start(): void; stop(): void; abort(): void;
     };
-    rec.lang = "fr-FR";
+    rec.lang = tag;
     rec.interimResults = false;
     rec.maxAlternatives = 1;
     rec.onresult = (e) => cb.current(e.results[0][0].transcript);
@@ -71,7 +75,7 @@ export function useSpeechInput(onResult: (text: string) => void) {
     rec.onerror = () => setListening(false);
     recRef.current = rec;
     return () => rec.abort();
-  }, []);
+  }, [tag]);
 
   const toggle = React.useCallback(() => {
     if (!recRef.current) return;

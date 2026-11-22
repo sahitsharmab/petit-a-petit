@@ -5,6 +5,7 @@ import { schema } from "@/lib/db";
 import { getSkill } from "@/lib/content/curriculum";
 import type { Exercise } from "@/lib/content/types";
 import { evaluateAnswer, type Mark, type Verdict } from "@/lib/french/evaluate";
+import { langOfSkill } from "@/lib/content/languages";
 import { parisDate } from "@/lib/learning/dates";
 import { HttpError } from "@/lib/http-error";
 import { applyFirstAttempt, applySkillReview, incrementPrimary, loadProgress } from "./progress";
@@ -219,6 +220,7 @@ export async function submitAttempt(
     const r = evaluateAnswer({
       answer, accepted: ex.accepted, confusables: ex.confusables, defaultTag: ex.skillId,
       unchangedFrom: ex.type === "transformation" ? ex.prompt : undefined,
+      lang: langOfSkill(ex.skillId),
     });
     feedback = {
       verdict: r.verdict, correctAnswer: r.verdict === "incorrect" ? r.closest : r.closest, explanation: ex.explanation, note: r.note,
@@ -253,7 +255,7 @@ export async function submitAttempt(
   const assistedHints = hintsUsed + (transcriptShown ? 1 : 0);
 
   const recorded = await db.transaction(async (tx) => {
-    const t = tx as unknown as DB;
+    const t = Object.assign(tx, { lang: db.lang }) as unknown as DB;
     // The AI judge is awaited above, so re-check that no other request changed this exercise meanwhile.
     const cur = await readSession(t, sessionId);
     const curPrev = cur.state.results[resultKey];
@@ -348,7 +350,7 @@ function nextStepText(b: Record<Outcome, number>, primaryPassed: boolean): strin
  * updates, primary-lesson credit and the completed status are written in one transaction.
  */
 export async function completeSession(db: DB, sessionId: string, now: Date = new Date()): Promise<SessionSummary> {
-  return db.transaction((tx) => completeInTx(tx as unknown as DB, sessionId, now));
+  return db.transaction((tx) => completeInTx(Object.assign(tx, { lang: db.lang }) as unknown as DB, sessionId, now));
 }
 
 async function completeInTx(db: DB, sessionId: string, now: Date): Promise<SessionSummary> {

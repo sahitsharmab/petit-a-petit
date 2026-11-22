@@ -1,4 +1,6 @@
 import type { SkillDef, WeekDef } from "./types";
+import type { Lang } from "./languages";
+import { DE_SKILLS, DE_WEEKS } from "./de/curriculum";
 
 export const WEEKS: WeekDef[] = [
   { number: 1, title: "First sentences", focus: "Subject pronouns, regular -ER verbs, basic sentences", cefr: "A1", description: "Who does what: je, tu, il, elle… and the most common verb pattern in French." },
@@ -393,7 +395,8 @@ export const SKILLS: SkillDef[] = [
   }),
 ];
 
-export const SKILL_BY_ID: Record<string, SkillDef> = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
+/** Every skill of every course (German ids start with "de-"). */
+export const SKILL_BY_ID: Record<string, SkillDef> = Object.fromEntries([...SKILLS, ...DE_SKILLS].map((s) => [s.id, s]));
 
 export function getSkill(id: string): SkillDef {
   const s = SKILL_BY_ID[id];
@@ -401,5 +404,17 @@ export function getSkill(id: string): SkillDef {
   return s;
 }
 
-/** Skills in curriculum order. */
-export const ORDERED_SKILLS = [...SKILLS].sort((a, b) => a.week - b.week || a.order - b.order);
+const order = (list: SkillDef[]) => [...list].sort((a, b) => a.week - b.week || a.order - b.order);
+
+/** French skills in curriculum order. */
+export const ORDERED_SKILLS = order(SKILLS);
+
+const COURSES: Record<Lang, { weeks: WeekDef[]; skills: SkillDef[]; ordered: SkillDef[] }> = {
+  fr: { weeks: WEEKS, skills: SKILLS, ordered: ORDERED_SKILLS },
+  de: { weeks: DE_WEEKS, skills: DE_SKILLS, ordered: order(DE_SKILLS) },
+};
+
+export const courseWeeks = (lang: Lang = "fr") => COURSES[lang].weeks;
+export const courseSkills = (lang: Lang = "fr") => COURSES[lang].skills;
+/** A course's skills in curriculum order. */
+export const orderedSkills = (lang: Lang = "fr") => COURSES[lang].ordered;

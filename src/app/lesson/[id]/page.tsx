@@ -7,6 +7,7 @@ import { getOrStartSession, type SessionSummary } from "@/lib/services/sessions"
 import { getSettings } from "@/lib/services/stats";
 import { formatDateLong } from "@/lib/learning/dates";
 import { LessonPlayer } from "@/components/lesson/lesson-player";
+import { CourseProvider } from "@/components/course/course-context";
 
 export const dynamic = "force-dynamic";
 
@@ -28,14 +29,16 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
     ? `Week ${lesson.weekNumber} · Day ${lesson.dayNumber} — ${formatDateLong(lesson.lessonDate)}`
     : lesson.kind === "review" ? "Review session" : `Practice · Week ${lesson.weekNumber}`;
   return (
-    <LessonPlayer
-      key={session.id}
-      lesson={{ id: lesson.id, title: lesson.title, subtitle: lesson.subtitle, eyebrow, intro: lesson.intro, primarySkillId: lesson.primarySkillId, kind: lesson.kind }}
-      exercises={exercises}
-      sessionId={session.id}
-      initialState={session.state}
-      initialSummary={session.status === "completed" ? (session.summary as SessionSummary) : null}
-      settings={{ speechRate: settings.speechRate, autoPlayAudio: settings.autoPlayAudio, showTranslations: settings.showTranslations }}
-    />
+    <CourseProvider lang={db.lang}>
+      <LessonPlayer
+        key={session.id}
+        lesson={{ id: lesson.id, title: lesson.title, subtitle: lesson.subtitle, eyebrow, intro: lesson.intro, primarySkillId: lesson.primarySkillId, kind: lesson.kind }}
+        exercises={exercises}
+        sessionId={session.id}
+        initialState={session.state}
+        initialSummary={session.status === "completed" ? (session.summary as SessionSummary) : null}
+        settings={{ speechRate: settings.speechRate, autoPlayAudio: settings.autoPlayAudio, showTranslations: settings.showTranslations }}
+      />
+    </CourseProvider>
   );
 }

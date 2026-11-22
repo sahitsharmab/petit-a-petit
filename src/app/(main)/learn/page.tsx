@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { CheckCircle2, ChevronDown, Circle, CircleDot } from "lucide-react";
 import { getDb } from "@/lib/db";
-import { SKILLS, WEEKS } from "@/lib/content/curriculum";
+import { courseSkills, courseWeeks } from "@/lib/content/curriculum";
 import { loadProgress } from "@/lib/services/progress";
 import { frontierSkill } from "@/lib/learning/planner";
 import { effectiveMastery } from "@/lib/learning/mastery";
@@ -19,7 +19,9 @@ const STATUS_LABEL = { new: "Not started", learning: "Learning", reviewing: "Rev
 export default async function LearnPage() {
   const db = await getDb();
   const progress = await loadProgress(db);
-  const frontier = frontierSkill({ progress });
+  const frontier = frontierSkill({ progress, lang: db.lang });
+  const SKILLS = courseSkills(db.lang);
+  const WEEKS = courseWeeks(db.lang);
   const frontierWeek = SKILLS.find((s) => s.id === frontier)!.week;
   const today = parisDate();
 

@@ -6,6 +6,7 @@ import type { SQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
 import type { DB } from "@/lib/db";
 import { schema } from "@/lib/db";
+import { LANGS, LANG_META, type Lang } from "@/lib/content/languages";
 
 /** User-data tables, in insert order (parents first). Curriculum seed and AI cache are excluded. */
 const TABLES = {
@@ -27,7 +28,7 @@ export const BACKUP_VERSION = 1;
 export async function exportProgress(db: DB) {
   const data: Record<string, unknown[]> = {};
   for (const n of NAMES) data[n] = await db.select().from(TABLES[n]).all();
-  return { app: "petit-a-petit", version: BACKUP_VERSION, exportedAt: new Date().toISOString(), data };
+  return { app: "petit-a-petit", version: BACKUP_VERSION, language: db.lang, exportedAt: new Date().toISOString(), data };
 }
 
 const Row = z.record(z.string(), z.unknown());
@@ -35,6 +36,8 @@ const Row = z.record(z.string(), z.unknown());
 export const BackupSchema = z.object({
   app: z.literal("petit-a-petit"),
   version: z.number().int().min(1).max(BACKUP_VERSION),
+  /** The course the progress belongs to; backups from before course choice are French. */
+  language: z.enum(LANGS).default("fr"),
   exportedAt: z.string(),
   data: z.object(Object.fromEntries(NAMES.map((n) => [n, z.array(Row)])) as Record<TableName, z.ZodArray<typeof Row>>),
 });
@@ -161,9 +164,18 @@ function countRows(data: Record<TableName, unknown[]>): Record<TableName, number
   return Object.fromEntries(NAMES.map((n) => [n, data[n].length])) as Record<TableName, number>;
 }
 
+/** A backup can only go into an account studying the same language. */
+function checkCourse(backup: { language: Lang }, lang: Lang) {
+  if (backup.language !== lang) {
+    throw new BackupError(`This backup is ${LANG_META[backup.language].name} progress, but your course is ${LANG_META[lang].name}.`);
+  }
+}
+
 /** Validate a backup and report what it contains, without changing anything. */
-export function previewImport(raw: unknown) {
-  return countRows(validateBackup(raw).data);
+export function previewImport(raw: unknown, lang: Lang = "fr") {
+  const backup = validateBackup(raw);
+  checkCourse(backup, lang);
+  return countRows(backup.data);
 }
 
 /** Save the current progress as a JSON file before it is replaced. Keeps the 10 most recent. */
@@ -183,15 +195,16 @@ export async function writeSafetyCopy(db: DB, dir: string, now: Date = new Date(
  */
 export async function importProgress(db: DB, raw: unknown, opts: { safetyCopyDir?: string } = {}) {
   const backup = validateBackup(raw);
+  checkCourse(backup, db.lang);
   const safetyCopy = opts.safetyCopyDir ? await writeSafetyCopy(db, opts.safetyCopyDir) : undefined;
   await db.batch([
     ...clearQueries(db),
     ...insertQueries(db, backup.data as Record<TableName, Record<string, unknown>[]>),
-    db.insert(schema.learningSettings).values({ id: 1 }).onConflictDoNothing(),
+    db.insert(schema.learningSettings).values(schema.NEW_LEARNER_SETTINGS).onConflictDoNothing(),
   ] as unknown as Batch);
   return Object.assign(countRows(backup.data), safetyCopy ? { safetyCopy } : {}) as Record<TableName, number> & { safetyCopy?: string };
 }
 
 export async function resetProgress(db: DB) {
-  await db.batch([...clearQueries(db), db.insert(schema.learningSettings).values({ id: 1 })] as unknown as Batch);
+  await db.batch([...clearQueries(db), db.insert(schema.learningSettings).values(schema.NEW_LEARNER_SETTINGS)] as unknown as Batch);
 }

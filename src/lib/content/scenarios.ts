@@ -1,6 +1,11 @@
+import type { Lang } from "./languages";
+import { DE_SCENARIOS } from "./de/scenarios";
+
 /**
  * Conversation scenarios. Each has a scripted branching path (works offline)
  * and a brief used when an AI partner is configured.
+ * `fr` fields hold the course language's text; `register` "vous"/"tu" means formal/informal
+ * (Sie/du in German).
  */
 export interface ScriptReply {
   fr: string;
@@ -272,6 +277,11 @@ export const SCENARIOS: Scenario[] = [
   },
 ];
 
+/** A course's scenarios (French ids are bare, German ids start with "de-"). */
+export function scenariosFor(lang: Lang = "fr"): Scenario[] {
+  return lang === "de" ? DE_SCENARIOS : SCENARIOS;
+}
+
 export function getScenario(id: string): Scenario | undefined {
-  return SCENARIOS.find((s) => s.id === id);
+  return SCENARIOS.find((s) => s.id === id) ?? DE_SCENARIOS.find((s) => s.id === id);
 }

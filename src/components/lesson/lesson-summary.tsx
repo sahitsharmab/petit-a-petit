@@ -1,4 +1,5 @@
 "use client";
+import { useCourse } from "@/components/course/course-context";
 import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
 import { ArrowRight, Clock, Repeat2, Target, TrendingUp } from "lucide-react";
@@ -37,6 +38,7 @@ function ScoreRing({ value, label }: { value: number; label: string }) {
 }
 
 export function LessonSummary({ summary, onPracticeAgain, busy }: { summary: SessionSummary; onPracticeAgain: () => void; busy: boolean }) {
+  const tl = useCourse().code;
   const delta = summary.primarySkill.after - summary.primarySkill.before;
   const heading = summary.accuracy >= 0.85 ? "Magnifique !" : summary.accuracy >= 0.6 ? "Bien joué !" : "Courage — ça vient !";
   const b = summary.breakdown;
@@ -110,16 +112,16 @@ export function LessonSummary({ summary, onPracticeAgain, busy }: { summary: Ses
                   {m.answer && (
                     <p className="text-sm">
                       <span className="mr-1.5 text-xs font-medium uppercase tracking-wide text-muted">{kind === "almost" ? "You wrote" : "First answer"}</span>
-                      <span className={kind === "almost" ? "text-warning" : "text-danger line-through decoration-danger/50"} lang="fr">{m.answer}</span>
+                      <span className={kind === "almost" ? "text-warning" : "text-danger line-through decoration-danger/50"} lang={tl}>{m.answer}</span>
                     </p>
                   )}
                   {kind === "recovered" && m.retryAnswer && (
                     <p className="text-sm text-primary">
                       <span className="mr-1.5 text-xs font-medium uppercase tracking-wide">Fixed on retry</span>
-                      <span lang="fr">{m.retryAnswer}</span> <span aria-hidden>✓</span>
+                      <span lang={tl}>{m.retryAnswer}</span> <span aria-hidden>✓</span>
                     </p>
                   )}
-                  <p className="font-medium text-success" lang="fr">{m.correct}</p>
+                  <p className="font-medium text-success" lang={tl}>{m.correct}</p>
                   <p className="text-sm text-muted">{m.explanation}</p>
                 </li>
               );

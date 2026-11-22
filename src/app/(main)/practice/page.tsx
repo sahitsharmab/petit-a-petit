@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { sql } from "drizzle-orm";
 import { Bot, Route, Target } from "lucide-react";
 import { getDb, schema } from "@/lib/db";
-import { SCENARIOS } from "@/lib/content/scenarios";
-import { ORDERED_SKILLS } from "@/lib/content/curriculum";
+import { scenariosFor } from "@/lib/content/scenarios";
+import { orderedSkills } from "@/lib/content/curriculum";
 import { aiStatus } from "@/lib/ai/provider";
 import { learnerLevel } from "@/lib/services/conversations";
 import { getSettings } from "@/lib/services/stats";
@@ -24,14 +24,14 @@ export default async function PracticePage() {
   const level = await learnerLevel(db);
   const counts = new Map((await db.select({ s: schema.conversationSessions.scenarioId, n: sql<number>`count(*)` }).from(schema.conversationSessions).groupBy(schema.conversationSessions.scenarioId).all()).map((r) => [r.s, Number(r.n)]));
   const progress = await loadProgress(db);
-  const weak = ORDERED_SKILLS.filter((s) => (progress[s.id]?.attempts ?? 0) > 0 && s.category !== "review").sort((a, b) => (progress[a.id]!.mastery - progress[b.id]!.mastery)).slice(0, 4);
+  const weak = orderedSkills(db.lang).filter((s) => (progress[s.id]?.attempts ?? 0) > 0 && s.category !== "review").sort((a, b) => (progress[a.id]!.mastery - progress[b.id]!.mastery)).slice(0, 4);
 
   return (
     <div className="space-y-8">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-display text-[2.1rem] font-semibold leading-tight">Practice</h1>
-          <p className="mt-1 max-w-xl text-muted">Real situations from life in France. Reply by tapping a suggestion, typing freely, or speaking.</p>
+          <p className="mt-1 max-w-xl text-muted">Real situations from everyday life in {db.lang === "de" ? "Germany" : "France"}. Reply by tapping a suggestion, typing freely, or speaking.</p>
         </div>
         <Badge tone={aiOn ? "primary" : "neutral"} className="px-3 py-1 text-sm">
           {aiOn ? <><Bot /> AI partner · {status.model}</> : <><Route /> Guided conversations</>}
@@ -48,7 +48,7 @@ export default async function PracticePage() {
       <section aria-labelledby="scenarios">
         <h2 id="scenarios" className="mb-3 font-semibold">Situations <span className="text-sm font-normal text-muted">· your level: {level.cefr}</span></h2>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {SCENARIOS.map((s) => (
+          {scenariosFor(db.lang).map((s) => (
             <ScenarioCard key={s.id} id={s.id} title={s.title} subtitle={s.subtitle} icon={s.icon} register={s.register} recommended={s.minWeek <= level.week + 1} done={counts.get(s.id) ?? 0} />
           ))}
         </div>

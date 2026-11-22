@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { DB } from "@/lib/db";
 import { schema } from "@/lib/db";
 import { SKILL_BY_ID, getSkill } from "@/lib/content/curriculum";
+import { LANG_META, langOfSkill, type Lang } from "@/lib/content/languages";
 import { getScenario, type Scenario, type ScriptReply } from "@/lib/content/scenarios";
 import { looseAnswer, tokenize } from "@/lib/french/normalize";
 import { parisDate } from "@/lib/learning/dates";
@@ -46,7 +47,13 @@ async function read(db: DB, id: string): Promise<ConversationRecord> {
 
 /** Learner level, from curriculum progress, controls partner difficulty. */
 export async function learnerLevel(db: DB): Promise<{ cefr: string; week: number; guidance: string }> {
-  const week = getSkill(frontierSkill({ progress: await loadProgress(db) })).week;
+  const week = getSkill(frontierSkill({ progress: await loadProgress(db), lang: db.lang })).week;
+  if (db.lang === "de") {
+    if (week <= 3) return { cefr: "A1", week, guidance: "Use very short sentences (max ~8 words), present tense only, very common words. One question at a time." };
+    if (week <= 6) return { cefr: "A1+", week, guidance: "Use short sentences (max ~10 words), mostly present tense, some modal verbs. One question at a time." };
+    if (week <= 9) return { cefr: "A2", week, guidance: "Use simple sentences (max ~14 words). Present and Perfekt are fine; keep the verb in second position." };
+    return { cefr: "A2+", week, guidance: "Natural but clear everyday German, up to ~16 words. Mix tenses naturally; occasionally use weil/dass clauses." };
+  }
   if (week <= 3) return { cefr: "A1", week, guidance: "Use very short sentences (max ~8 words), present tense only, very common words. One question at a time." };
   if (week <= 6) return { cefr: "A1+", week, guidance: "Use short sentences (max ~10 words), mostly present tense, some aller + infinitive. One question at a time." };
   if (week <= 9) return { cefr: "A2", week, guidance: "Use simple sentences (max ~14 words). Present, futur proche and passé composé are fine." };
@@ -63,7 +70,7 @@ async function allowedProvider(db: DB) {
 
 export async function startConversation(db: DB, scenarioId: string, date: Date = new Date()): Promise<ConversationRecord> {
   const sc = getScenario(scenarioId);
-  if (!sc) throw new HttpError(404, "Unknown scenario");
+  if (!sc || langOfSkill(sc.id) !== db.lang) throw new HttpError(404, "Unknown scenario");
   const mode = (await allowedProvider(db)) ? "ai" : "scripted";
   const first = sc.nodes[sc.start];
   const messages: ChatMessage[] = [{ role: "partner", fr: first.them.fr, en: first.them.en, suggestions: first.replies.filter((r) => r.ok !== false).map((r) => ({ fr: r.fr, en: r.en })), at: now() }];
@@ -86,27 +93,40 @@ export function matchScore(text: string, reply: ScriptReply): number {
 }
 
 /** Does the text negate something (ne … pas / jamais / rien / personne, or a leading « non »)? */
-export function hasNegation(text: string): boolean {
+export function hasNegation(text: string, lang: Lang = "fr"): boolean {
   const t = ` ${looseAnswer(text)} `;
+  if (lang === "de") return /^\snein\s/.test(t) || /\s(nicht|kein|keine|keinen|keinem|keiner|nie|niemals|nichts)\s/.test(t);
   return /^\snon\s/.test(t) || (/\s(ne\s|n')/.test(t) && /\s(pas|jamais|rien|personne)\s/.test(t));
 }
 
 /** Why the partner couldn't act on a free-text reply, or null when the intent is clear. */
-function unclearIntent(text: string, scored: { r: ScriptReply; s: number }[]): { fr: string; en: string; suggestions: ScriptReply[] } | null {
+/** The partner's stock lines when a free-text reply can't be acted on, in the scenario's language and register. */
+function partnerLines(sc: Scenario) {
+  if (langOfSkill(sc.id) === "de") {
+    const du = sc.register === "tu";
+    return {
+      unclear: { fr: du ? "Entschuldigung, das habe ich nicht verstanden. Kannst du das anders sagen?" : "Entschuldigung, das habe ich nicht verstanden. Können Sie das anders sagen?", en: "Sorry, I didn't understand that. Can you say it another way?" },
+      negated: { fr: du ? "Oh, Entschuldigung: Das willst du nicht? Was möchtest du denn?" : "Oh, Entschuldigung: Das möchten Sie nicht? Was möchten Sie denn?", en: "Oh, sorry: you don't want that? What would you like, then?" },
+      mean: (a: string, b: string) => (du ? `Entschuldigung, meinst du « ${a} » oder « ${b} »?` : `Entschuldigung, meinen Sie « ${a} » oder « ${b} »?`),
+    };
+  }
+  return {
+    unclear: { fr: "Pardon, je n'ai pas bien compris. Vous pouvez reformuler ?", en: "Sorry, I didn't quite understand. Can you rephrase?" },
+    negated: { fr: "Ah, pardon : vous ne voulez pas ça ? Qu'est-ce que vous voulez, alors ?", en: "Oh, sorry: you don't want that? What would you like, then?" },
+    mean: (a: string, b: string) => `Pardon, vous voulez dire « ${a} » ou « ${b} » ?`,
+  };
+}
+
+function unclearIntent(sc: Scenario, text: string, scored: { r: ScriptReply; s: number }[]): { fr: string; en: string; suggestions: ScriptReply[] } | null {
   const best = scored[0];
-  if (!best || best.s < 0.4) {
-    return { fr: "Pardon, je n'ai pas bien compris. Vous pouvez reformuler ?", en: "Sorry, I didn't quite understand. Can you rephrase?", suggestions: [] };
-  }
+  const lang = langOfSkill(sc.id);
+  const p = partnerLines(sc);
+  if (!best || best.s < 0.4) return { ...p.unclear, suggestions: [] };
   // « Je ne voudrais pas de thé » shares words with « Je voudrais un thé » but means the opposite.
-  if (hasNegation(text) && !hasNegation(best.r.fr)) {
-    return { fr: "Ah, pardon : vous ne voulez pas ça ? Qu'est-ce que vous voulez, alors ?", en: "Oh, sorry: you don't want that? What would you like, then?", suggestions: [] };
-  }
+  if (hasNegation(text, lang) && !hasNegation(best.r.fr, lang)) return { ...p.negated, suggestions: [] };
   const rival = scored.find((x) => x !== best && x.r.next !== best.r.next && x.r.ok !== false && x.s >= 0.4 && best.s - x.s < 0.1);
   if (rival) {
-    return {
-      fr: `Pardon, vous voulez dire « ${best.r.fr} » ou « ${rival.r.fr} » ?`, en: `Sorry, do you mean "${best.r.en}" or "${rival.r.en}"?`,
-      suggestions: [best.r, rival.r],
-    };
+    return { fr: p.mean(best.r.fr, rival.r.fr), en: `Sorry, do you mean "${best.r.en}" or "${rival.r.en}"?`, suggestions: [best.r, rival.r] };
   }
   return null;
 }
@@ -117,7 +137,7 @@ function scriptedTurn(sc: Scenario, nodeId: string, text: string, replyIndex?: n
   if (replyIndex !== undefined) chosen = node.replies[replyIndex];
   else {
     const scored = node.replies.map((r) => ({ r, s: matchScore(text, r) })).sort((a, b) => b.s - a.s);
-    const unclear = unclearIntent(text, scored);
+    const unclear = unclearIntent(sc, text, scored);
     if (unclear) {
       const good = unclear.suggestions.filter((r) => r.ok !== false);
       const options = good.length ? good : node.replies.filter((r) => r.ok !== false);
@@ -136,7 +156,7 @@ function scriptedTurn(sc: Scenario, nodeId: string, text: string, replyIndex?: n
     return {
       learner: { role: "learner" as const, fr: text, unresolved: true, at: now() },
       partner: {
-        role: "partner" as const, fr: "Pardon, je n'ai pas bien compris. Vous pouvez reformuler ?", en: "Sorry, I didn't quite understand. Can you rephrase?",
+        role: "partner" as const, ...partnerLines(sc).unclear,
         suggestions: node.replies.filter((r) => r.ok !== false).map((r) => ({ fr: r.fr, en: r.en })), at: now(),
       },
       nextNode: nodeId,
@@ -157,10 +177,11 @@ function scriptedTurn(sc: Scenario, nodeId: string, text: string, replyIndex?: n
 }
 
 function aiSystem(sc: Scenario, level: Awaited<ReturnType<typeof learnerLevel>>) {
-  return `You are role-playing ${sc.partner} in France, talking with an English-speaking learner of French.
+  const L = LANG_META[langOfSkill(sc.id)];
+  return `You are role-playing ${sc.partner} in ${L.code === "de" ? "Germany" : "France"}, talking with an English-speaking learner of ${L.name}.
 Scenario goal for the learner: ${sc.goal}
-Address the learner with "${sc.register}". Learner level: ${level.cefr}. ${level.guidance}
-Stay in character and keep the conversation moving toward the goal. Reply in French only in "reply".
+Address the learner with "${L.code === "de" ? (sc.register === "tu" ? "du" : "Sie") : sc.register}". Learner level: ${level.cefr}. ${level.guidance}
+Stay in character and keep the conversation moving toward the goal. Reply in ${L.name} only in "reply".
 Corrections: only correct real grammar or vocabulary errors in the learner's LAST message, gently, and don't correct trivial issues (missing accents, capitals, punctuation). If it was fine, correction is null.
 Offer 2–3 short suggested replies the learner could say next, at their level.
 Set "done": true only when the scenario has naturally concluded (after a goodbye).
@@ -251,7 +272,9 @@ function scriptedSummary(conv: ConversationRecord, sc: Scenario): ConversationSu
     corrections,
     vocabulary: sc.vocabulary,
     reviewSkillIds: needsWork ? sc.skills.slice(0, 2) : [],
-    encouragement: needsWork ? "Each slip you notice now is one you won't make in real life. Bien joué !" : "Très bien ! Try it again with free typing for an extra challenge.",
+    encouragement: needsWork
+      ? `Each slip you notice now is one you won't make in real life. ${LANG_META[langOfSkill(sc.id)].praise.wellDone}`
+      : `${LANG_META[langOfSkill(sc.id)].praise.veryGood} Try it again with free typing for an extra challenge.`,
   };
 }
 
@@ -266,7 +289,7 @@ export async function endConversation(db: DB, id: string, date: Date = new Date(
       const transcript = conv.messages.filter((m) => m.role !== "note").map((m) => `${m.role === "partner" ? "Partner" : "Learner"}: ${m.fr}`).join("\n");
       const skills = sc.skills.map((s) => `${s} (${SKILL_BY_ID[s]?.title})`).join(", ");
       summary = await askJson(provider,
-        `You are a French teacher reviewing a learner's role-play conversation. Be encouraging and concrete. Only list real errors from the learner's lines. Reply with ONLY JSON: {"summary": "2-3 sentences in English", "corrections": [{"original": "...", "corrected": "...", "explanation": "..."}], "vocabulary": [{"fr": "...", "en": "..."}], "reviewSkillIds": ["skill ids from the list, only if relevant to errors"], "encouragement": "one sentence"}`,
+        `You are a ${LANG_META[langOfSkill(sc.id)].name} teacher reviewing a learner's role-play conversation. Be encouraging and concrete. Only list real errors from the learner's lines. Reply with ONLY JSON: {"summary": "2-3 sentences in English", "corrections": [{"original": "...", "corrected": "...", "explanation": "..."}], "vocabulary": [{"fr": "...", "en": "..."}], "reviewSkillIds": ["skill ids from the list, only if relevant to errors"], "encouragement": "one sentence"}`,
         [{ role: "user", content: `Scenario: ${sc.title} — ${sc.goal}\nRelevant skill ids: ${skills}\n\nTranscript:\n${transcript}` }],
         ConversationSummarySchema, { maxTokens: 1500, timeoutMs: 40_000 });
       summary.reviewSkillIds = summary.reviewSkillIds.filter((s) => !!SKILL_BY_ID[s]);
@@ -293,7 +316,8 @@ export async function explainLast(db: DB, id: string): Promise<string> {
     const vocab = sc.vocabulary.filter((v) => looseAnswer(last.fr).includes(looseAnswer(v.fr.split(" (")[0].replace(/\(.*\)/, "")).split(" / ")[0]));
     return `“${last.en}”${vocab.length ? `\n\nUseful here: ${vocab.map((v) => `${v.fr} = ${v.en}`).join("; ")}.` : ""}`;
   }
-  const res = await askJson(provider, `You are a French tutor. Explain the given French sentence to an ${conv.level} English-speaking learner in 2–4 short sentences: meaning, any key grammar point and useful words. Reply ONLY JSON: {"text": "..."}`,
+  const lname = LANG_META[langOfSkill(conv.scenarioId)].name;
+  const res = await askJson(provider, `You are a ${lname} tutor. Explain the given ${lname} sentence to an ${conv.level} English-speaking learner in 2–4 short sentences: meaning, any key grammar point and useful words. Reply ONLY JSON: {"text": "..."}`,
     [{ role: "user", content: last.fr }], HelpSchema, { maxTokens: 500, timeoutMs: 20_000 });
   return res.text;
 }

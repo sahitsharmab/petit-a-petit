@@ -1,4 +1,5 @@
 "use client";
+import { useCourse } from "@/components/course/course-context";
 import { motion } from "motion/react";
 import { ArrowRight, Compass, Lightbulb, Sparkles, Target } from "lucide-react";
 import type { LessonIntro as Intro } from "@/lib/services/lessons";
@@ -8,6 +9,7 @@ import { SpeakButton } from "../speech/speak-button";
 export function LessonIntro({ intro, eyebrow, title, subtitle, count, minutes, onStart, speak }: {
   intro: Intro; eyebrow: string; title: string; subtitle: string; count: number; minutes: number; onStart: () => void; speak: (t: string) => void;
 }) {
+  const tl = useCourse().code;
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-2xl space-y-7 pb-36">
       <header className="space-y-3">
@@ -57,7 +59,7 @@ export function LessonIntro({ intro, eyebrow, title, subtitle, count, minutes, o
                     return (
                     <tr key={r} className="border-t border-border">
                       {row.map((cell, c) => (
-                        <td key={c} className={c === speakCol ? "px-3.5 py-2 font-medium" : "px-3.5 py-2"} lang={c === speakCol ? "fr" : undefined}>
+                        <td key={c} className={c === speakCol ? "px-3.5 py-2 font-medium" : "px-3.5 py-2"} lang={c === speakCol ? tl : undefined}>
                           <span className="inline-flex items-center gap-1">
                             {cell}
                             {c === speakCol && /[a-zà-ü]/i.test(cell) && <SpeakButton onSpeak={() => speak(cell.replace(/\(.*?\)/g, ""))} className="size-6 [&_svg]:size-3.5" label={`Listen: ${cell}`} />}
@@ -96,13 +98,14 @@ export function LessonIntro({ intro, eyebrow, title, subtitle, count, minutes, o
 }
 
 function Examples({ examples, speak }: { examples: { fr: string; en: string }[]; speak: (t: string) => void }) {
+  const tl = useCourse().code;
   return (
     <ul className="space-y-2">
       {examples.map((e) => (
         <li key={e.fr} className="flex items-start gap-2 rounded-xl bg-surface-2/60 px-3.5 py-2.5">
           <SpeakButton onSpeak={() => speak(e.fr)} className="-ml-1 -mt-0.5" label={`Listen: ${e.fr}`} />
           <div>
-            <p className="font-medium" lang="fr">{e.fr}</p>
+            <p className="font-medium" lang={tl}>{e.fr}</p>
             <p className="text-sm text-muted">{e.en}</p>
           </div>
         </li>

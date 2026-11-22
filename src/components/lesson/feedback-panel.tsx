@@ -1,4 +1,5 @@
 "use client";
+import { useCourse } from "@/components/course/course-context";
 import { motion } from "motion/react";
 import { ArrowRight, BookMarked, CheckCircle2, CircleAlert, Lightbulb, RotateCcw, Sparkles, XCircle } from "lucide-react";
 import type { Mark } from "@/lib/french/evaluate";
@@ -7,15 +8,10 @@ import { Button } from "@/components/ui/button";
 import { SpeakButton } from "../speech/speak-button";
 import { cn } from "@/lib/utils";
 
-const TITLES = {
-  correct: ["Parfait !", "Excellent !", "C'est ça !", "Très bien !", "Bravo !"],
-  almost: ["Presque !", "So close!"],
-  incorrect: ["Pas tout à fait", "Not quite"],
-};
-
 function Marks({ marks, tone }: { marks: Mark[]; tone: "wrong" | "right" }) {
+  const tl = useCourse().code;
   return (
-    <span lang="fr">
+    <span lang={tl}>
       {marks.map((m, i) => {
         const glue = m.token.endsWith("'") || marks[i + 1]?.token.startsWith("-");
         return (
@@ -41,7 +37,10 @@ export function FeedbackPanel({ feedback, seed, onContinue, onRetry, onReveal, h
   speak: (t: string) => void;
   isChoice: boolean;
 }) {
+  const course = useCourse();
+  const tl = course.code;
   const v = feedback.verdict;
+  const TITLES = course.praise;
   const title = TITLES[v][seed % TITLES[v].length];
   const Icon = v === "correct" ? CheckCircle2 : v === "almost" ? CircleAlert : XCircle;
   const palette = v === "correct" ? "bg-success-soft text-success border-success/25" : v === "almost" ? "bg-warning-soft text-warning border-warning/25" : "bg-danger-soft text-danger border-danger/25";
@@ -75,7 +74,7 @@ export function FeedbackPanel({ feedback, seed, onContinue, onRetry, onReveal, h
                     <p className="flex items-center gap-1.5">
                       <span className="text-xs font-medium uppercase tracking-wide text-muted">Correct</span>
                       <span className="font-medium">
-                        {hasDiff && feedback.expectedMarks ? <Marks marks={feedback.expectedMarks} tone="right" /> : <span lang="fr">{feedback.correctAnswer}</span>}
+                        {hasDiff && feedback.expectedMarks ? <Marks marks={feedback.expectedMarks} tone="right" /> : <span lang={tl}>{feedback.correctAnswer}</span>}
                       </span>
                       {!isChoice || /[a-zàâéèêç]/i.test(feedback.correctAnswer) ? <SpeakButton onSpeak={() => speak(feedback.correctAnswer)} className="-my-1" /> : null}
                     </p>

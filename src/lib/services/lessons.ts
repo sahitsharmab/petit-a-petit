@@ -3,8 +3,10 @@ import { and, asc, desc, eq } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import type { DB } from "@/lib/db";
 import { schema } from "@/lib/db";
-import { SKILLS, WEEKS, getSkill } from "@/lib/content/curriculum";
+import { courseSkills, courseWeeks, getSkill } from "@/lib/content/curriculum";
+import { baseSkillId, langOfSkill } from "@/lib/content/languages";
 import { hashString } from "@/lib/content/generate";
+import { HttpError } from "@/lib/http-error";
 import { TEMPLATE_BY_ID } from "@/lib/content/templates";
 import type { Exercise, ExplanationSection } from "@/lib/content/types";
 import { assembleLesson } from "@/lib/learning/assemble";
@@ -164,15 +166,16 @@ export async function createPracticeLesson(db: DB, req: PracticeRequest, now: Da
   let reviewKeys: string[] = [];
   if (req.kind === "skill") {
     const s = getSkill(req.skillId);
+    if (langOfSkill(s.id) !== db.lang) throw new HttpError(404, "That topic isn't part of your course.");
     primary = s.id;
-    templateId = s.id === "w12-assessment" ? "assessment" : "practice-skill";
+    templateId = baseSkillId(s.id) === "w12-assessment" ? "assessment" : "practice-skill";
     title = s.title;
     subtitle = "Targeted practice";
     week = s.week;
   } else if (req.kind === "week") {
-    const w = WEEKS.find((x) => x.number === req.week);
+    const w = courseWeeks(db.lang).find((x) => x.number === req.week);
     if (!w) throw new Error("Unknown week");
-    primary = SKILLS.find((s) => s.week === w.number)!.id;
+    primary = courseSkills(db.lang).find((s) => s.week === w.number)!.id;
     templateId = "practice-week";
     title = `Week ${w.number}: ${w.title}`;
     subtitle = "Week revision";
@@ -181,7 +184,7 @@ export async function createPracticeLesson(db: DB, req: PracticeRequest, now: Da
     const input = await loadPlannerInput(db, today);
     const plan = planDailyLesson(input);
     reviewKeys = chooseReviewKeys(input, "", 9);
-    primary = reviewKeys[0]?.startsWith("skill:") ? reviewKeys[0].slice(6) : input.dueItems[0]?.skillId ?? frontierSkill({ progress: await loadProgress(db) });
+    primary = reviewKeys[0]?.startsWith("skill:") ? reviewKeys[0].slice(6) : input.dueItems[0]?.skillId ?? frontierSkill({ progress: await loadProgress(db), lang: db.lang });
     if (!reviewKeys.length) reviewKeys = [`skill:${plan.primarySkillId}`];
     templateId = "review-mix";
     title = "Review session";

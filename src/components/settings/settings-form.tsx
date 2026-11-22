@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { ThemeToggle } from "@/components/shell/theme-toggle";
 import { useSpeech } from "@/components/speech/use-speech";
+import { useCourse } from "@/components/course/course-context";
 import type { AiStatus } from "@/lib/ai/provider";
 
 interface Settings {
@@ -34,7 +35,8 @@ export function SettingsForm({ initial, ai }: { initial: Settings; ai: AiStatus 
   const [saved, setSaved] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [perm, setPerm] = React.useState<NotificationPermission | "unsupported">("default");
-  const { speak, supported: ttsSupported, hasFrenchVoice } = useSpeech(s.speechRate);
+  const { speak, supported: ttsSupported, hasVoice } = useSpeech(s.speechRate);
+  const course = useCourse();
   const timer = React.useRef<ReturnType<typeof setTimeout>>(undefined);
 
   React.useEffect(() => { setPerm("Notification" in window ? Notification.permission : "unsupported"); }, []);
@@ -137,11 +139,11 @@ OLLAMA_MODEL=llama3.1:8b`}</pre>
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><Volume2 className="size-4 text-subtle" /> Audio & display</CardTitle></CardHeader>
         <CardContent className="divide-y divide-border">
-          <Row label="Speaking speed" description={!ttsSupported ? "Speech isn't supported in this browser." : !hasFrenchVoice ? "No French voice found — install one in your OS speech settings for the best audio." : "Uses your browser's French voice."} htmlFor="rate">
+          <Row label="Speaking speed" description={!ttsSupported ? "Speech isn't supported in this browser." : !hasVoice ? `No ${course.name} voice found — install one in your OS speech settings for the best audio.` : `Uses your browser's ${course.name} voice.`} htmlFor="rate">
             <div className="flex items-center gap-3">
               <input id="rate" type="range" min={0.6} max={1.2} step={0.05} value={s.speechRate} onChange={(e) => save({ speechRate: Number(e.target.value) })} className="w-36 accent-[var(--primary)]" />
               <span className="w-10 text-sm tabular-nums text-muted">{s.speechRate.toFixed(2)}×</span>
-              <Button size="sm" variant="ghost" onClick={() => speak("Bonjour ! On apprend le français ensemble ?", s.speechRate)} disabled={!ttsSupported}>Test</Button>
+              <Button size="sm" variant="ghost" onClick={() => speak(course.testPhrase, s.speechRate)} disabled={!ttsSupported}>Test</Button>
             </div>
           </Row>
           <Row label="Play audio automatically" description="Read listening exercises and conversation replies aloud.">
@@ -220,7 +222,7 @@ function DataCard() {
 
   return (
     <Card>
-      <CardHeader><div><CardTitle>Your data</CardTitle><CardDescription>Stored locally in <code>data/french.db</code> (SQLite). Nothing is sent anywhere unless you enable an AI provider.</CardDescription></div></CardHeader>
+      <CardHeader><div><CardTitle>Your data</CardTitle><CardDescription>Your progress lives in its own database, separate from every other learner. Nothing is sent to an AI service unless one is enabled.</CardDescription></div></CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline"><a href="/api/export" download><Download /> Export progress (JSON)</a></Button>

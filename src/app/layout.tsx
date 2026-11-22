@@ -4,8 +4,8 @@ import "@fontsource-variable/fraunces";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "Petit à petit — French", template: "%s · Petit à petit" },
-  description: "A private, local-first French tutor that grows with you.",
+  title: { default: "Petit à petit", template: "%s · Petit à petit" },
+  description: "A private French and German tutor that grows with you, little by little.",
 };
 
 export const viewport: Viewport = {

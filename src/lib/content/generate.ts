@@ -8,7 +8,11 @@ import type { Confusable } from "@/lib/french/evaluate";
 import { bankFor } from "./bank";
 import { SKILLS, getSkill } from "./curriculum";
 import { FRAMES, negateComplement, type Frame } from "./frames";
-import type { BankSentence, Exercise, ExerciseType, LessonSection, McqItem } from "./types";
+import type { BankSentence, DrillItem, Exercise, ExerciseType, LessonSection, McqItem } from "./types";
+import { LANG_META, langOfSkill } from "./languages";
+
+/** "French" / "German" for a skill's course. */
+const langName = (skillId: string) => LANG_META[langOfSkill(skillId)].name;
 
 // ───────────────────────── seeded randomness ─────────────────────────
 
@@ -304,7 +308,7 @@ function conjExercise(ctx: GenContext, skillId: string, type: ExerciseType, choi
       const enSubj = subject === "tu" || subject === "vous" ? ` (${SUBJECT_HINT[subject].replace("you ", "").replace(/[()]/g, "")})` : "";
       return {
         ...base, type,
-        instruction: "Translate into French",
+        instruction: `Translate into ${langName(skillId)}`,
         prompt: built.en.replace(/^(You)\b/, `$1${enSubj}`),
         accepted: [...built.frAll, ...extra],
         confusables: conjConfusables(verb, tense, subject, negative, true).map((c) => ({ ...c, text: c.text + (built.complement ? " " + built.complement : "") })),
@@ -318,7 +322,7 @@ function conjExercise(ctx: GenContext, skillId: string, type: ExerciseType, choi
       return {
         ...base, type, mode: "dictation",
         instruction: "Type what you hear",
-        prompt: "Listen and write the sentence in French.",
+        prompt: `Listen and write the sentence in ${langName(skillId)}.`,
         audioText: built.fr,
         accepted: built.frAll,
         translation: built.en,
@@ -329,7 +333,7 @@ function conjExercise(ctx: GenContext, skillId: string, type: ExerciseType, choi
     case "sentence_builder": {
       const tokens = built.fr.replace(/[.!?]$/, "").split(" ");
       const wrongForm = conjConfusables(verb, tense, subject, negative, false)[0]?.text.split(" ").pop();
-      const tiles = shuffle(ctx.rng, [...tokens.map(tileCase), ...(wrongForm ? [wrongForm] : [])]);
+      const tiles = shuffle(ctx.rng, [...tokens.map((t, i) => tileCase(t, skillId, i)), ...(wrongForm ? [wrongForm] : [])]);
       return {
         ...base, type,
         instruction: "Build the sentence",
@@ -338,7 +342,7 @@ function conjExercise(ctx: GenContext, skillId: string, type: ExerciseType, choi
         accepted: built.frAll,
         translation: built.en,
         audioText: built.fr,
-        hint: `Start with « ${tileCase(tokens[0])} ».`,
+        hint: `Start with « ${tileCase(tokens[0], skillId, 0)} ».`,
       };
     }
     default:
@@ -346,7 +350,14 @@ function conjExercise(ctx: GenContext, skillId: string, type: ExerciseType, choi
   }
 }
 
-function tileCase(token: string): string {
+/** German words that are only capitalised because they start the sentence. */
+const DE_LOWER = /^(ich|du|er|sie|es|wir|ihr|man|der|die|das|den|dem|des|ein|eine|einen|einem|einer|mein|meine|dein|deine|wo|wohin|woher|was|wer|wie|wann|warum|welche|welcher|welches|heute|morgen|gestern|jetzt|dann|zuerst|danach|am|im|um|in|auf|mit|nach|zu|bei|von|aus|seit|vor|ja|nein|nicht|kein|keine|und|aber|oder|weil|dass|wenn|hier|da|dort|kann|können|kannst|möchte|möchten|hast|hat|haben|habt|bin|bist|ist|sind|seid|gibt|gehst|geht|kommst|kommt|sprechen|sprichst|spricht|wohnst|wohnt|arbeitest|arbeitet|machst|macht|trinkst|trinkt|isst|nimmst|nimmt|siehst|sieht|liest|willst|will|musst|muss|darf|darfst|soll|sollst|bitte|danke|entschuldigung|guten|gute|hallo|tschüss|alles|gern|gerne|sehr|so|also|natürlich|vielleicht|leider|gut|super|klar|toll|schade|stimmt|genau|okay|ok|wollen|wollt|könnt|müsst|mögt|magst|mag)$/i;
+
+function tileCase(token: string, skillId: string, index: number): string {
+  if (langOfSkill(skillId) === "de") {
+    // German capitalises every noun, so keep case except for a sentence-initial function word.
+    return index === 0 && DE_LOWER.test(token) ? token.toLowerCase() : token;
+  }
   return /^(Paris|Lyon|Londres|Bordeaux|Sam|Marie|Léa|Madame|Monsieur|Versailles|France|Canada)/.test(token) ? token : token.toLowerCase();
 }
 
@@ -397,20 +408,20 @@ function sentenceExercise(ctx: GenContext, skillId: string, sent: BankSentence, 
   switch (type) {
     case "translation":
       return {
-        ...base, type, instruction: "Translate into French", prompt: sent.en,
+        ...base, type, instruction: `Translate into ${langName(skillId)}`, prompt: sent.en,
         accepted: [sent.fr, ...(sent.alts ?? [])], allowAiJudge: true,
         hint: `Start with « ${words.slice(0, 2).join(" ")}… ».`,
       };
     case "sentence_builder": {
-      const tiles = shuffle(ctx.rng, [...words.map(tileCase), ...(sent.distractors ?? [])]);
+      const tiles = shuffle(ctx.rng, [...words.map((w, i) => tileCase(w, skillId, i)), ...(sent.distractors ?? [])]);
       return {
         ...base, type, instruction: "Build the sentence", prompt: sent.en, tiles,
-        accepted: [sent.fr, ...(sent.alts ?? [])], hint: `Start with « ${tileCase(words[0])} ».`,
+        accepted: [sent.fr, ...(sent.alts ?? [])], hint: `Start with « ${tileCase(words[0], skillId, 0)} ».`,
       };
     }
     case "listening":
       return {
-        ...base, type, mode: "dictation", instruction: "Type what you hear", prompt: "Listen and write the sentence in French.",
+        ...base, type, mode: "dictation", instruction: "Type what you hear", prompt: `Listen and write the sentence in ${langName(skillId)}.`,
         accepted: [sent.fr], hint: `It means: “${sent.en}”`,
       };
     default:
@@ -462,7 +473,8 @@ function dialogueExercise(ctx: GenContext, skillId: string, id: string): Exercis
     options: order.map((i) => dlg.options[i].fr), answerIndex: order.indexOf(correct),
     optionNotes: order.map((i) => dlg.options[i].why),
     accepted: [dlg.options[correct].fr], translation: dlg.options[correct].en,
-    explanation: dlg.options[correct].why, hint: "Think about politeness (tu or vous?) and whether the reply actually answers the question.",
+    explanation: dlg.options[correct].why,
+    hint: `Think about politeness (${langOfSkill(skillId) === "de" ? "du or Sie" : "tu or vous"}?) and whether the reply actually answers the question.`,
   };
 }
 
@@ -555,8 +567,11 @@ function generateOwn(ctx: GenContext, skillId: string, type: ExerciseType): Exer
   const preferBank = ctx.rng() < 0.45;
 
   switch (type) {
-    case "conjugation":
-      return conj ? conjExercise(ctx, skillId, type, conj) : null;
+    case "conjugation": {
+      if (conj) return conjExercise(ctx, skillId, type, conj);
+      const drill = fresh(ctx, bank.drills, (i) => `drill:${skillId}:${i.id}`);
+      return drill ? drillExercise(ctx, skillId, drill) : null;
+    }
     case "fill_blank": {
       const typeable = bank.mcq?.filter((q) => q.typeable);
       const q = fresh(ctx, typeable, (i) => `mcq:${skillId}:${i.id}`);
@@ -595,6 +610,24 @@ function generateOwn(ctx: GenContext, skillId: string, type: ExerciseType): Exer
       return dlg ? dialogueExercise(ctx, skillId, dlg.id) : null;
     }
   }
+}
+
+/** A hand-written conjugation drill (courses without a conjugation engine). */
+function drillExercise(ctx: GenContext, skillId: string, d: DrillItem): Exercise {
+  // "sie (she)" is shown as the prompt; the typed sentence form is "sie arbeitet".
+  const full = (form: string) => `${d.subject.replace(/\s*\([^)]*\)$/, "")} ${form}`;
+  return {
+    id: nextId(ctx), skillId, section: ctx.section, itemKey: `drill:${skillId}:${d.id}`, rule: ruleName(skillId), source: "local",
+    type: "conjugation", instruction: "Conjugate the verb", prompt: `${d.verb} → ${d.subject}`, promptNote: d.form,
+    accepted: [...d.answer, ...d.answer.map(full)],
+    confusables: (d.wrong ?? []).flatMap((w) => [
+      { text: w.text, tag: "wrong-form", explanation: w.why },
+      { text: full(w.text), tag: "wrong-form", explanation: w.why },
+    ]),
+    translation: d.en, audioText: d.sentence ?? toSentence(full(d.answer[0])),
+    explanation: d.explanation, hint: d.hint ?? `Which ending goes with « ${d.subject} »?`,
+    meta: { verb: d.verb, subject: d.subject },
+  };
 }
 
 function transformFromBank(ctx: GenContext, skillId: string, id: string): Exercise | null {
@@ -644,6 +677,10 @@ export function exerciseForItem(ctx: GenContext, itemKey: string): Exercise | nu
     return sentenceExercise(ctx, skillId, sent, pick(ctx.rng, ["translation", "sentence_builder", "listening"] as ExerciseType[]));
   }
   if (kind === "tr") return transformFromBank(ctx, skillId, id);
+  if (kind === "drill") {
+    const d = bank.drills?.find((x) => x.id === id);
+    return d ? drillExercise(ctx, skillId, d) : null;
+  }
   if (kind === "dlg") return dialogueExercise(ctx, skillId, id);
   return null;
 }

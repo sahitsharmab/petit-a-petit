@@ -1,6 +1,7 @@
-# petit à petit — a private French tutor
+# petit à petit — a private French & German tutor
 
-A local-first French learning app for an English speaker living in France, from A1 towards A2.
+A local-first language learning app for English speakers, from A1 towards A2, with a full
+**French** course and a full **German** course (each learner picks one at sign-up).
 Open `http://127.0.0.1:3000` each evening: it knows what you learned yesterday, what you
 struggled with, what's due for review and what comes next, and builds today's 15–20 minute
 lesson from that.
@@ -15,7 +16,7 @@ honest scoring, and everything stored on your own machine. It works fully offlin
 
 - **A daily lesson planned for you**, based on mastery, spaced repetition and yesterday's mistakes, with a one-line reason for each choice.
 - **8 exercise types**, including listening, dictation and sentence building, all with instant feedback that explains the rule.
-- **A real conjugation engine** (~80 verbs, three tenses) that generates unlimited, grammatically correct practice.
+- **Two complete 12-week courses:** French (with a real conjugation engine, ~80 verbs and three tenses, generating unlimited practice) and German (cases, separable verbs, Perfekt, word order, hand-written drills; answer checking understands umlauts typed as ae/oe/ue and ß as ss).
 - **Guided real-life conversations** (café, landlord, doctor…) that understand free typing, with an optional AI partner.
 - **Honest progress:** the headline score counts only exact first answers; near-misses, hints and retries are reported separately.
 - **Private by design:** SQLite on your disk, server bound to localhost, JSON backups with automatic safety copies.
@@ -26,7 +27,7 @@ honest scoring, and everything stored on your own machine. It works fully offlin
 | **Hosting** | Local (single learner) or Vercel + Turso with logins and one database per learner |
 | **AI (optional)** | Anthropic Claude or a local Ollama model, schema-validated with automatic local fallback |
 | **Voice** | Browser Web Speech API (no key, no cloud service of ours) |
-| **Quality** | 130 Vitest unit/integration tests · Playwright end-to-end test · ESLint · strict TypeScript |
+| **Quality** | 146 Vitest unit/integration tests · Playwright end-to-end test · ESLint · strict TypeScript |
 
 ## Quick start
 
@@ -47,56 +48,62 @@ progress in `data/backups/` first.
 
 ## Host it for two people (free: Vercel + Turso)
 
-Run locally, the app has one learner and no login. Hosted, it has **logins** and **one
-database per learner**: each person gets their own streak, lessons, mistakes, settings and
-backups. Hosting uses two free plans: [Vercel](https://vercel.com) (the app) and
-[Turso](https://turso.tech) (hosted SQLite, one database per person). Free plan limits change,
-so check the current terms when you sign up.
+Run locally, the app has one learner and no login. Hosted, it has **accounts**: people sign up
+on `/signup` with a username, a password and the language they want to learn (French or
+German), and each account gets **its own database** (streak, lessons, mistakes, settings and
+backups are never shared). The course can't be switched later; a second account can learn
+the other language. Hosting uses two free
+plans: [Vercel](https://vercel.com) (the app) and [Turso](https://turso.tech) (hosted SQLite).
+Free plan limits change, so check the current terms when you sign up.
 
-**1. Two Turso databases** (web dashboard, no CLI needed)
-1. Sign up at turso.tech and create a database for each person, e.g. `petit-sahit` and
-   `petit-partner`. Pick the location closest to you (for France: a Western Europe region).
-2. For each database, copy its **URL** (`libsql://…turso.io`) and create a **token**
-   (read & write, no expiry or a long one).
+**1. Turso** (web dashboard, no CLI needed)
+1. Sign up at turso.tech. Create one database called e.g. `petit-accounts` in the location
+   closest to you (for France: a Western Europe region). It only stores accounts.
+2. Copy its **URL** (`libsql://…turso.io`) and create a **token** for it (read & write, no expiry).
+3. Note your **organization slug** (your account/org name, shown in the dashboard URL) and the
+   **group** the database is in (usually `default`).
+4. Create a **Platform API token** (account settings → API tokens). The app uses it to create
+   each new learner's database at sign-up.
 
-**2. Passwords and a session secret** (on your computer, in this folder)
-```bash
-npm run hash-password   # once per person; also prints a random SESSION_SECRET
-```
-The password is typed into the terminal (not saved in shell history). Copy the
-`scrypt:…` line it prints. Never put the plain password anywhere.
-
-**3. Deploy on Vercel**
+**2. Deploy on Vercel**
 1. Sign up at vercel.com with GitHub and **Import** this repository. The framework is detected
    as Next.js; keep the default build settings.
 2. Before the first deploy, add these **Environment Variables** (Production):
 
    | Name | Value |
    |---|---|
-   | `APP_USERS` | `sahit,partner` (lower-case ids, comma-separated) |
-   | `SESSION_SECRET` | the random secret from step 2 |
-   | `USER_SAHIT_PASSWORD_HASH` | `scrypt:…` from step 2 |
-   | `USER_SAHIT_DB_URL` / `USER_SAHIT_DB_TOKEN` | Turso URL and token |
-   | `USER_SAHIT_NAME` (optional) | display name, also accepted at login |
-   | …the same four for `PARTNER` | |
+   | `SESSION_SECRET` | 32+ random characters: run `npm run session-secret` and paste the output |
+   | `ACCOUNTS_DB_URL` | the accounts database URL from step 1 |
+   | `ACCOUNTS_DB_TOKEN` | its token |
+   | `TURSO_API_TOKEN` | the Platform API token |
+   | `TURSO_ORG` | your organization slug |
+   | `TURSO_GROUP` (optional) | only if your group isn't called `default` |
 
-3. In **Settings → Functions**, set the function region next to your Turso region (e.g. a
-   Western Europe region for both), so each database call is a short hop.
-4. Deploy, open the URL, and sign in. Each database is created (migrated and seeded) on first use.
+3. In **Settings → Functions**, set the function region next to your Turso region, so each
+   database call is a short hop.
+4. Deploy, open the URL, choose **Create an account**, and send the link to the other person so
+   they can make theirs. Each new account's database (`pap-<username>-…`) appears in your Turso
+   dashboard.
+5. Once you both have accounts you can add `SIGNUPS=closed` and redeploy, so nobody else can
+   sign up even if the link gets around.
 
 **Moving existing progress:** on the local app, Settings → Export progress; then on the
-hosted app, sign in as that person and use Settings → Import. Hosted imports download a copy of
-the current hosted progress to your device first, because there's no server disk.
+hosted app, sign in and use Settings → Import. Hosted imports download a copy of the current
+hosted progress to your device first, because there's no server disk. A backup only imports
+into an account learning the same language.
 
 **Good to know**
-- The hosted app refuses to start without `APP_USERS` and `SESSION_SECRET`, so it can't be
-  accidentally deployed without logins.
-- Changing someone's password hash signs out their existing sessions. Sessions last 30 days.
-- Failed logins are rate-limited (8 per 15 minutes per client and server instance).
+- The hosted app refuses to run without `SESSION_SECRET` and `ACCOUNTS_DB_URL`, so it can't be
+  deployed without logins by accident.
+- Sessions last 30 days. Changing `SESSION_SECRET` signs everyone out.
+- Failed logins are rate-limited (8 per 15 minutes per client and server instance), and
+  sign-ups to 5 per hour per client, since each one creates a database.
 - AI stays off unless you add `AI_PROVIDER` and a key, which is shared by everyone signed in.
 - Reminders work while a tab of the site is open, as before.
-- Local logins (for testing) work too: set `APP_USERS` and the hashes in `.env.local`, and each
-  person's data goes to `data/<id>.db`.
+- Local accounts (for testing): set `ACCOUNTS_DB_URL=data/accounts.db` and a `SESSION_SECRET`
+  in `.env.local`. Without Turso API settings, each account's data goes to `data/<username>.db`.
+- Local single-learner mode is French; set `FRANCAIS_LANG=de` to run it with the German course
+  (data in `data/de.db`).
 
 ## What's inside
 
@@ -205,5 +212,5 @@ src/lib/learning/        dates (Europe/Paris), mastery, SRS, streaks, planner, l
 src/lib/services/        DB-backed services: lessons, sessions, progress, stats, conversations, backup
 src/lib/ai/              provider adapter (Anthropic / Ollama), Zod schemas, enrichment, judging
 src/lib/db/              Drizzle schema, libSQL client (file or Turso), seed sync;  drizzle/ = SQL migrations
-src/lib/auth/            users from env, scrypt passwords, signed session cookies;  src/proxy.ts = login gate
+src/lib/auth/            accounts DB, sign-up (creates each learner's Turso DB), scrypt passwords, signed cookies;  src/proxy.ts = login gate
 ```

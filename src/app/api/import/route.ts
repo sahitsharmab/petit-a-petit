@@ -23,7 +23,7 @@ export const POST = handle(async (req: Request) => {
   const user = await currentUser();
   const localFile = localPathOf(user.dbUrl);
   try {
-    if (preview) return ok({ preview: previewImport(raw), safetyCopy: localFile ? "server" : "download" });
+    if (preview) return ok({ preview: previewImport(raw, user.lang), safetyCopy: localFile ? "server" : "download" });
     const db = await getDb();
     const res = await importProgress(db, raw, localFile ? { safetyCopyDir: path.join(path.dirname(localFile), "backups") } : {});
     const { safetyCopy, ...imported } = res;

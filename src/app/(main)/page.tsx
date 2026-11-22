@@ -10,13 +10,17 @@ import { Button } from "@/components/ui/button";
 import { StartLessonButton } from "@/components/dashboard/start-lesson-button";
 import { WeekActivity } from "@/components/dashboard/week-activity";
 import { pct } from "@/lib/utils";
+import { LANG_META } from "@/lib/content/languages";
 
 export const dynamic = "force-dynamic";
 
 export default async function TodayPage() {
-  const d = await getDashboard(await getDb());
+  const db = await getDb();
+  const d = await getDashboard(db);
+  const L = LANG_META[db.lang];
   const hour = parisParts().hour;
-  const hello = hour >= 18 || hour < 4 ? "Bonsoir" : "Bonjour";
+  const evening = hour >= 18 || hour < 4;
+  const hello = db.lang === "de" ? (evening ? "Guten Abend" : hour < 11 ? "Guten Morgen" : "Hallo") : evening ? "Bonsoir" : "Bonjour";
   const { card, plan } = { card: d.card, plan: d.card.plan };
   const lesson = card.lesson;
   const week = lesson?.weekNumber ?? plan.weekNumber;
@@ -32,10 +36,10 @@ export default async function TodayPage() {
         <div>
           <p className="text-sm text-muted">{formatDateLong(d.today)}</p>
           <h1 className="mt-1 font-display text-[2.1rem] font-semibold leading-tight sm:text-[2.5rem]">
-            {hello}{d.name ? `, ${d.name}` : ""} !
+            {hello}{d.name ? `, ${d.name}` : ""}{db.lang === "de" ? "!" : " !"}
           </h1>
           <p className="mt-1 text-muted">
-            {card.status === "completed" ? "Today's lesson is done. Félicitations !" : "Ready for today's French lesson?"}
+            {card.status === "completed" ? `Today's lesson is done. ${L.congrats}` : `Ready for today's ${L.name} lesson?`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -102,15 +106,15 @@ export default async function TodayPage() {
                 {d.lastSession.struggled.length > 0 ? (
                   <div>
                     <p className="flex items-center gap-1.5 text-muted"><TriangleAlert className="size-3.5 text-warning" /> Tricky bits (in today&apos;s warm-up):</p>
-                    <ul className="mt-1.5 flex flex-wrap gap-1.5">{d.lastSession.struggled.map((s) => <li key={s} className="rounded-lg bg-warning-soft px-2 py-1 text-sm" lang="fr">{s}</li>)}</ul>
+                    <ul className="mt-1.5 flex flex-wrap gap-1.5">{d.lastSession.struggled.map((s) => <li key={s} className="rounded-lg bg-warning-soft px-2 py-1 text-sm" lang={db.lang}>{s}</li>)}</ul>
                   </div>
                 ) : <p className="text-success">No lingering mistakes — nice!</p>}
               </>
             ) : (
               <div className="space-y-2 text-muted">
-                <p className="font-medium text-ink">Bienvenue !</p>
+                <p className="font-medium text-ink">{L.welcome}</p>
                 <p>Each evening you&apos;ll get one focused lesson built from where you are: a warm-up of things due for review, one new idea, practice, a sentence to build and a short conversation.</p>
-                <p>Everything is saved on this computer.</p>
+                <p>Your progress is saved automatically and belongs only to you.</p>
               </div>
             )}
           </CardContent>

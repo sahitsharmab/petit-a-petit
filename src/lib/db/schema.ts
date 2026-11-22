@@ -183,6 +183,12 @@ export const learningSettings = sqliteTable("learning_settings", {
   updatedAt: text("updated_at").notNull().default(now),
 });
 
+/**
+ * The settings row a new (or reset) learner starts with. Audio is off until the learner
+ * switches it on. (The column default stays true so existing databases need no migration.)
+ */
+export const NEW_LEARNER_SETTINGS = { id: 1, autoPlayAudio: false };
+
 /** Cache of validated AI outputs keyed by request hash. */
 export const aiCache = sqliteTable("ai_cache", {
   key: text("key").primaryKey(),

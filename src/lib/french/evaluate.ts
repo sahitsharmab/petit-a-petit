@@ -1,5 +1,6 @@
 import { canonicalChars, expandAll, levenshtein, looseAnswer, normalizeAnswer, tokenize } from "./normalize";
 import { joinWithElision } from "./conjugate";
+import type { Lang } from "@/lib/content/languages";
 
 export type Verdict = "correct" | "almost" | "incorrect";
 
@@ -24,6 +25,8 @@ export interface EvaluateInput {
    * except an intonation question, which must then actually end with « ? ».
    */
   unchangedFrom?: string;
+  /** Course language (default French): picks the accent, elision and negation rules. */
+  lang?: Lang;
 }
 
 export interface Mark {
@@ -74,6 +77,11 @@ function fixElision(answer: string): string {
   return joinWithElision(normalizeAnswer(answer).split(" "));
 }
 
+/** Loose German form: no umlaut marks, ß = ss, and ae/oe/ue accepted for ä/ö/ü. */
+export function germanLoose(input: string): string {
+  return looseAnswer(normalizeAnswer(input).replace(/ß/g, "ss").replace(/([aou])e/g, "$1"));
+}
+
 export function evaluateAnswer(input: EvaluateInput): EvaluateResult {
   const accepted = expandAll(input.accepted);
   const expected = accepted[0] ?? "";
@@ -94,7 +102,9 @@ export function evaluateAnswer(input: EvaluateInput): EvaluateResult {
     return {
       verdict: "incorrect", expected, closest: intonationIdx >= 0 ? accepted[intonationIdx] : expected, mistakeTag: "unchanged",
       note: intonationIdx >= 0
-        ? "Without « ? » this is still the statement. Add a question mark, or use est-ce que or inversion."
+        ? input.lang === "de"
+          ? "Without « ? » this is still the statement. Add a question mark, or put the verb first."
+          : "Without « ? » this is still the statement. Add a question mark, or use est-ce que or inversion."
         : "That's the original sentence. It still needs to be transformed.",
     };
   }
@@ -116,22 +126,26 @@ export function evaluateAnswer(input: EvaluateInput): EvaluateResult {
     }
   }
 
-  // Accent-only difference: right word, wrong/missing accent.
-  const loose = looseAnswer(answer);
-  const looseIdx = acceptedNorm.findIndex((a) => looseAnswer(a) === loose);
+  // Accent-only difference: right word, wrong/missing accent (German: umlauts and ß, also typed as ae/oe/ue/ss).
+  const de = input.lang === "de";
+  const looseOf = de ? germanLoose : looseAnswer;
+  const loose = looseOf(answer);
+  const looseIdx = acceptedNorm.findIndex((a) => looseOf(a) === loose);
   if (looseIdx >= 0) {
     return {
       verdict: "almost",
       expected,
       closest: accepted[looseIdx],
-      mistakeTag: "accents",
-      note: `Almost perfect — just watch the accents: « ${accepted[looseIdx]} ».`,
+      mistakeTag: de ? "umlauts" : "accents",
+      note: de
+        ? `Almost perfect — just watch the umlauts and ß: « ${accepted[looseIdx]} ».`
+        : `Almost perfect — just watch the accents: « ${accepted[looseIdx]} ».`,
       ...diffTokens(input.answer, accepted[looseIdx]),
     };
   }
 
   // Missing elision: "je aime" -> "j'aime".
-  const elided = fixElision(answer);
+  const elided = de ? answer : fixElision(answer);
   const elisionIdx = acceptedNorm.indexOf(elided);
   if (elided !== answer && elisionIdx >= 0) {
     return {
@@ -159,7 +173,13 @@ export function evaluateAnswer(input: EvaluateInput): EvaluateResult {
   let tag = input.defaultTag ?? "incorrect";
   let note: string | undefined;
   const hasNe = (t: string[]) => t.includes("ne") || t.includes("n'");
-  if (closestTokens.includes("pas") && hasNe(closestTokens) && !(tokens.includes("pas") && hasNe(tokens))) {
+  const isNeg = (t: string[]) => t.some((w) => w === "nicht" || /^kein(e|en|em|er|es)?$/.test(w));
+  if (de) {
+    if (isNeg(closestTokens) && !isNeg(tokens)) {
+      tag = "negation";
+      note = "German negates with nicht (verbs, adjectives, names, der/die/das nouns) or kein (nouns with ein or no article).";
+    }
+  } else if (closestTokens.includes("pas") && hasNe(closestTokens) && !(tokens.includes("pas") && hasNe(tokens))) {
     tag = "negation";
     note = "French negation wraps the verb with two parts: ne … pas (n' before a vowel).";
   }

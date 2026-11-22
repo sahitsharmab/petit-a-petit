@@ -30,7 +30,9 @@ export function ScenarioCard({ id, title, subtitle, icon, register, recommended,
       className={cn("card group flex h-full flex-col items-start gap-3 p-5 text-left transition-all hover:-translate-y-0.5 hover:shadow-lift disabled:opacity-70", recommended && "ring-1 ring-primary/30")}>
       <div className="flex w-full items-start justify-between">
         <span className="grid size-11 place-items-center rounded-2xl bg-primary-soft text-primary">{busy ? <Loader2 className="size-5 animate-spin" /> : <Icon className="size-5" />}</span>
-        <span className="text-xs text-subtle">{register === "tu" ? "informal · tu" : "polite · vous"}</span>
+        <span className="text-xs text-subtle">
+          {id.startsWith("de-") ? (register === "tu" ? "informal · du" : "polite · Sie") : register === "tu" ? "informal · tu" : "polite · vous"}
+        </span>
       </div>
       <div>
         <p className="font-semibold">{title}</p>

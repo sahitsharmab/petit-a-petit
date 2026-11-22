@@ -8,13 +8,18 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import * as schema from "./schema";
 import { syncSeed } from "./seed";
+import type { Lang } from "@/lib/content/languages";
 
 /**
  * One learner's database. Locally it is a SQLite file; hosted it is a Turso (libSQL) database.
  * Every query is async. Inside `db.transaction(async (tx) => …)` services receive the
  * transaction cast to DB and must only use it (never the outer db) until it returns.
  */
-export type DB = LibSQLDatabase<typeof schema> & { $client: Client };
+export type DB = LibSQLDatabase<typeof schema> & {
+  $client: Client;
+  /** The learner's course. A learner database holds exactly one course. */
+  lang: Lang;
+};
 
 const MIGRATIONS = path.join(process.cwd(), "drizzle"); // bundled via outputFileTracingIncludes
 
@@ -43,11 +48,12 @@ function tempDbFile(): string {
  * Open, migrate and seed a database. `url` is a file path, a `file:` URL, a `libsql://` Turso URL,
  * or ":memory:" (tests: a throwaway temp file, since in-memory libSQL allows only one connection).
  */
-export async function createDb(url: string, authToken?: string): Promise<DB> {
+export async function createDb(url: string, authToken?: string, lang: Lang = "fr"): Promise<DB> {
   const local = url === ":memory:" ? tempDbFile() : localPathOf(url);
   if (local) fs.mkdirSync(path.dirname(local), { recursive: true });
   const client = local ? serialized(createClient({ url: `file:${local}`, timeout: 5000 })) : createClient({ url, authToken });
   const db = drizzle(client, { schema }) as DB;
+  db.lang = lang;
   if (local) await db.run(sql`PRAGMA journal_mode = WAL`);
   await migrateWithRetry(db);
   await syncSeed(db);
@@ -62,7 +68,7 @@ export async function createDb(url: string, authToken?: string): Promise<DB> {
  * holds the queue from begin until commit or rollback, and must only use its own handle.
  * Remote (Turso) clients wait asynchronously and don't need this.
  */
-function serialized(client: Client): Client {
+export function serialized(client: Client): Client {
   let tail: Promise<void> = Promise.resolve();
   const lock = async (): Promise<() => void> => {
     let release!: () => void;
@@ -123,11 +129,11 @@ const globalForDb = globalThis as unknown as { __francaisDbs?: Map<string, Promi
 const opened = (globalForDb.__francaisDbs ??= new Map());
 
 /** Open (once per server instance) the database for a key such as a user id. */
-export function openDb(key: string, url: string, authToken?: string): Promise<DB> {
-  const cacheKey = `${key}|${url}`;
+export function openDb(key: string, url: string, authToken?: string, lang: Lang = "fr"): Promise<DB> {
+  const cacheKey = `${key}|${url}|${lang}`;
   let p = opened.get(cacheKey);
   if (!p) {
-    p = createDb(url, authToken);
+    p = createDb(url, authToken, lang);
     opened.set(cacheKey, p);
     p.catch(() => opened.delete(cacheKey));
   }
@@ -138,7 +144,7 @@ export function openDb(key: string, url: string, authToken?: string): Promise<DB
 export async function getDb(): Promise<DB> {
   const { currentUser } = await import("@/lib/auth/current");
   const user = await currentUser();
-  return openDb(user.id, user.dbUrl, user.dbToken);
+  return openDb(user.id, user.dbUrl, user.dbToken, user.lang);
 }
 
 export { schema };

@@ -1,4 +1,5 @@
 import type { BankSentence, DialogueItem, McqItem, SkillBank, TransformItem } from "./types";
+import { DE_BANK } from "./de/bank";
 
 /*
  * Hand-written, reviewed content. Generated drills (conjugations, frames)
@@ -733,5 +734,5 @@ export const BANK: Record<string, SkillBank> = {
 };
 
 export function bankFor(skillId: string): SkillBank {
-  return BANK[skillId] ?? {};
+  return BANK[skillId] ?? DE_BANK[skillId] ?? {};
 }

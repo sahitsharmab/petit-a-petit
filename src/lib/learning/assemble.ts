@@ -1,4 +1,5 @@
-import { SKILLS, getSkill } from "@/lib/content/curriculum";
+import { SKILL_BY_ID, courseSkills, getSkill } from "@/lib/content/curriculum";
+import { langOfSkill, skillIdFor } from "@/lib/content/languages";
 import { createRng, exerciseForItem, generateExercise, pick, type GenContext } from "@/lib/content/generate";
 import { TEMPLATE_BY_ID } from "@/lib/content/templates";
 import type { Exercise, ExerciseType } from "@/lib/content/types";
@@ -31,6 +32,9 @@ export function coreTypeSequence(skillId: string, count: number, consolidate: bo
 export function assembleLesson(input: AssembleInput): Exercise[] {
   const template = TEMPLATE_BY_ID[input.templateId];
   if (!template) throw new Error(`Unknown template ${input.templateId}`);
+  // The lesson's course follows its primary skill; review items from another course are skipped.
+  const lang = langOfSkill(input.primarySkillId);
+  const SKILLS = courseSkills(lang);
   const rng = createRng(input.seed);
   const used = new Set<string>(input.recentItemKeys ?? []);
   const inLesson = new Set<string>();
@@ -57,6 +61,9 @@ export function assembleLesson(input: AssembleInput): Exercise[] {
   for (const block of template.blocks) {
     if (block.from === "review") {
       for (const key of input.reviewKeys.slice(0, block.count)) {
+        const keySkill = key.startsWith("skill:") ? key.slice(6) : key.split(":")[1] ?? "";
+        if (!(keySkill in SKILL_BY_ID) && !key.startsWith("conj:") && !key.startsWith("gtr:")) continue;
+        if (keySkill in SKILL_BY_ID && langOfSkill(keySkill) !== lang) continue;
         if (key.startsWith("skill:")) {
           const sid = key.slice(6);
           const types = getSkill(sid).practice.types.filter((t) => t !== "dialogue");
@@ -90,7 +97,7 @@ export function assembleLesson(input: AssembleInput): Exercise[] {
         else if (block.types.includes("dialogue")) {
           const week = getSkill(sid).week;
           const nearby = SKILLS.filter((s) => s.week <= week && s.week >= week - 2 && s.practice.types.includes("dialogue"))
-            .concat(SKILLS.filter((s) => s.id === "w11-situations" || s.id === "w1-basic-sentences"));
+            .concat(SKILLS.filter((s) => s.id === skillIdFor(lang, "w11-situations") || s.id === skillIdFor(lang, "w1-basic-sentences")));
           for (const s of nearby) if (tryTypes(block.section, s.id, ["dialogue"])) break;
         }
       }

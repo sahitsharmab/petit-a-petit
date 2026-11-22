@@ -27,6 +27,7 @@ export const EXERCISE_LABEL: Record<ExerciseType, string> = {
   dialogue: "Conversation",
 };
 
+/** Text fields named `fr` hold the course language's text (French or German). */
 export interface DialogueLine {
   who: "them" | "you";
   fr: string;
@@ -157,9 +158,31 @@ export interface DialogueItem {
   options: { fr: string; en: string; correct: boolean; why: string }[];
 }
 
+/**
+ * A hand-written conjugation drill (courses without a conjugation engine, e.g. German):
+ * "wohnen → du" with the accepted verb forms.
+ */
+export interface DrillItem {
+  id: string;
+  verb: string;
+  subject: string;
+  /** Accepted verb forms without the subject, e.g. ["wohnst"]; "[a|b]" patterns allowed. */
+  answer: string[];
+  /** Full sentence with subject, e.g. "Du wohnst in Berlin." (audio and translation exercises). */
+  sentence?: string;
+  en: string;
+  /** Tense / form label shown under the prompt, e.g. "Präsens". */
+  form: string;
+  explanation: string;
+  hint?: string;
+  /** Common wrong forms with targeted explanations. */
+  wrong?: { text: string; why: string }[];
+}
+
 export interface SkillBank {
   sentences?: BankSentence[];
   mcq?: McqItem[];
   transforms?: TransformItem[];
   dialogues?: DialogueItem[];
+  drills?: DrillItem[];
 }

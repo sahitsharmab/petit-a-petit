@@ -2,7 +2,8 @@ import { and, desc, eq, gte, inArray, like, lte, sql } from "drizzle-orm";
 import type { DB } from "@/lib/db";
 import { schema } from "@/lib/db";
 import type { Exercise } from "@/lib/content/types";
-import { SKILLS, getSkill } from "@/lib/content/curriculum";
+import { SKILL_BY_ID, courseSkills, getSkill } from "@/lib/content/curriculum";
+import { langOfSkill } from "@/lib/content/languages";
 import { conjugate, type Subject, type Tense } from "@/lib/french/conjugate";
 import type { Verdict } from "@/lib/french/evaluate";
 import { addDays } from "@/lib/learning/dates";
@@ -21,7 +22,7 @@ export function labelForExercise(ex: Pick<Exercise, "itemKey" | "prompt" | "tran
       return conjugate(conjPart[1], conjPart[2] as Tense, conjPart[3] as Subject, { negative: conjPart[4] === "neg" }).full;
     } catch { /* fall through */ }
   }
-  const text = ["translation", "sentence_builder", "listening"].includes(ex.type) ? ex.audioText ?? ex.prompt : ex.prompt;
+  const text = ["translation", "sentence_builder", "listening"].includes(ex.type) || parts[0] === "drill" ? ex.audioText ?? ex.prompt : ex.prompt;
   return text.length > 60 ? text.slice(0, 57) + "…" : text;
 }
 
@@ -140,7 +141,7 @@ export async function loadFocusPattern(db: DB, today: string, progress?: Record<
     .all()).map((a) => ({ ...a, verdict: a.verdict as Verdict }));
   // Fresh-verb candidates: verbs from conjugation topics the learner has already practised.
   const verbsByTense: Record<string, string[]> = {};
-  for (const s of SKILLS) {
+  for (const s of courseSkills(db.lang)) {
     const conj = s.practice.conj;
     if (!conj || conj.negative || !(progress[s.id]?.attempts > 0)) continue;
     const list = (verbsByTense[conj.tense] ??= []);
@@ -156,7 +157,7 @@ function getVerbSafe(v: string) {
 export async function loadPlannerInput(db: DB, today: string): Promise<PlannerInput> {
   const dueItems = (await db.select().from(schema.reviewSchedule).where(lte(schema.reviewSchedule.dueDate, today)).all())
     .map((r) => ({ itemKey: r.itemKey, skillId: r.skillId, label: r.label, dueDate: r.dueDate, ease: r.ease, lapses: r.lapses }))
-    .filter((r) => SKILLS.some((s) => s.id === r.skillId));
+    .filter((r) => langOfSkill(r.skillId) === db.lang && r.skillId in SKILL_BY_ID);
   const before = (await loadStudyDates(db)).filter((d) => d < today);
   const daily = await db.select({ week: schema.generatedLessons.weekNumber, n: sql<number>`count(*)` }).from(schema.generatedLessons)
     .where(and(eq(schema.generatedLessons.kind, "daily"), sql`${schema.generatedLessons.lessonDate} < ${today}`))
@@ -164,6 +165,7 @@ export async function loadPlannerInput(db: DB, today: string): Promise<PlannerIn
   const progress = await loadProgress(db);
   return {
     today,
+    lang: db.lang,
     progress,
     focus: await loadFocusPattern(db, today, progress),
     dueItems,

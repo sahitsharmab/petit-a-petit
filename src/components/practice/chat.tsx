@@ -1,4 +1,5 @@
 "use client";
+import { useCourse } from "@/components/course/course-context";
 import * as React from "react";
 import Link from "next/link";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
@@ -21,6 +22,8 @@ export function Chat({ initial, scenario, settings, initialFinished }: {
   settings: { showTranslations: boolean; speechRate: number; autoPlayAudio: boolean };
   initialFinished: boolean;
 }) {
+  const course = useCourse();
+  const tl = course.code;
   const [conv, setConv] = React.useState(initial);
   const [finished, setFinished] = React.useState(initialFinished);
   const [text, setText] = React.useState("");
@@ -127,7 +130,7 @@ export function Chat({ initial, scenario, settings, initialFinished }: {
           </AnimatePresence>
           {finished ? (
             <div className="flex flex-col items-center gap-2 py-2 text-center">
-              <p className="text-sm text-muted">The conversation has reached its end. Bravo !</p>
+              <p className="text-sm text-muted">The conversation has reached its end. {course.praise.bravo}</p>
               <Button onClick={end} disabled={!!busy} size="lg">{busy === "end" ? <Loader2 className="animate-spin" /> : <Flag />} See my feedback</Button>
             </div>
           ) : (
@@ -136,7 +139,7 @@ export function Chat({ initial, scenario, settings, initialFinished }: {
                 <div className="flex flex-wrap gap-2">
                   {lastPartner.suggestions.map((s, i) => (
                     <button key={i} type="button" onClick={() => setText(s.fr)} disabled={!!busy}
-                      className="rounded-xl border border-primary/25 bg-primary-soft/50 px-3 py-1.5 text-left text-sm hover:bg-primary-soft" lang="fr">
+                      className="rounded-xl border border-primary/25 bg-primary-soft/50 px-3 py-1.5 text-left text-sm hover:bg-primary-soft" lang={tl}>
                       {s.fr}{showEn && <span className="block text-xs text-muted" lang="en">{s.en}</span>}
                     </button>
                   ))}
@@ -151,8 +154,8 @@ export function Chat({ initial, scenario, settings, initialFinished }: {
                 </button>
               </div>
               <form className="flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (text.trim()) void send({ text }); }}>
-                <textarea ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} rows={1} lang="fr" aria-label="Your reply in French"
-                  placeholder="Répondez en français…" autoComplete="off" autoCorrect="off" spellCheck={false}
+                <textarea ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} rows={1} lang={tl} aria-label={`Your reply in ${course.name}`}
+                  placeholder={course.replyPlaceholder} autoComplete="off" autoCorrect="off" spellCheck={false}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (text.trim()) void send({ text }); } }}
                   className="max-h-32 min-h-11 flex-1 resize-none rounded-xl border-2 border-border bg-surface px-3.5 py-2.5 outline-none focus:border-primary" />
                 <MicButton onText={(t) => setText((prev) => (prev ? prev + " " : "") + t)} />
@@ -177,7 +180,8 @@ function HelpButton({ icon: Icon, label, onClick, active, busy }: { icon: typeof
 }
 
 function Bubble({ m, showEn, speak }: { m: ChatMessage; showEn: boolean; speak: (t: string) => void }) {
-  if (m.role === "note") return <p className="rounded-xl bg-surface-2 px-4 py-2 text-center text-xs text-muted">{m.fr}</p>;
+  const tl = useCourse().code;
+ if (m.role === "note") return <p className="rounded-xl bg-surface-2 px-4 py-2 text-center text-xs text-muted">{m.fr}</p>;
   const partner = m.role === "partner";
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={cn("flex flex-col gap-1.5", partner ? "items-start" : "items-end")}>
@@ -185,7 +189,7 @@ function Bubble({ m, showEn, speak }: { m: ChatMessage; showEn: boolean; speak: 
         {partner && <div className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-soft text-xs font-semibold text-primary" aria-hidden>FR</div>}
         <div className={cn("rounded-2xl px-4 py-2.5 shadow-soft", partner ? "rounded-bl-md border border-border bg-surface" : "rounded-br-md bg-primary text-primary-ink")}>
           <div className="flex items-start gap-1.5">
-            <p className="text-[1.02rem]" lang="fr">{m.fr}</p>
+            <p className="text-[1.02rem]" lang={tl}>{m.fr}</p>
             {partner && <SpeakButton onSpeak={() => speak(m.fr)} className="-my-1 -mr-2" />}
           </div>
           {partner && showEn && m.en && <p className="mt-1 text-sm text-muted">{m.en}</p>}
@@ -193,19 +197,20 @@ function Bubble({ m, showEn, speak }: { m: ChatMessage; showEn: boolean; speak: 
       </div>
       {m.correction && (
         <div className="max-w-[88%] rounded-xl border border-warning/25 bg-warning-soft px-3.5 py-2 text-sm">
-          <p className="flex items-center gap-1.5 font-medium text-warning"><CircleAlert className="size-3.5" /> Better: <span className="text-ink" lang="fr">{m.correction.corrected}</span></p>
+          <p className="flex items-center gap-1.5 font-medium text-warning"><CircleAlert className="size-3.5" /> Better: <span className="text-ink" lang={tl}>{m.correction.corrected}</span></p>
           {m.correction.explanation && <p className="mt-0.5 text-muted">{m.correction.explanation}</p>}
         </div>
       )}
       {m.model && !m.correction && (
-        <p className="max-w-[88%] text-xs text-muted">Understood ✓ · a natural way to say it: <span lang="fr" className="text-ink">{m.model}</span></p>
+        <p className="max-w-[88%] text-xs text-muted">Understood ✓ · a natural way to say it: <span lang={tl} className="text-ink">{m.model}</span></p>
       )}
     </motion.div>
   );
 }
 
 function ConversationSummaryView({ conv, title, speak }: { conv: ConversationRecord; title: string; speak: (t: string) => void }) {
-  const s = conv.summary!;
+  const tl = useCourse().code;
+ const s = conv.summary!;
   return (
     <div className="mx-auto max-w-2xl space-y-6 pb-16">
       <Link href="/practice" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink"><ArrowLeft className="size-4" /> Practice</Link>
@@ -221,8 +226,8 @@ function ConversationSummaryView({ conv, title, speak }: { conv: ConversationRec
           <ul className="mt-3 divide-y divide-border">
             {s.corrections.map((c, i) => (
               <li key={i} className="space-y-0.5 py-3 first:pt-0 last:pb-0">
-                <p className="text-sm text-danger line-through decoration-danger/50" lang="fr">{c.original}</p>
-                <p className="font-medium text-success" lang="fr">{c.corrected}</p>
+                <p className="text-sm text-danger line-through decoration-danger/50" lang={tl}>{c.original}</p>
+                <p className="font-medium text-success" lang={tl}>{c.corrected}</p>
                 <p className="text-sm text-muted">{c.explanation}</p>
               </li>
             ))}
@@ -235,7 +240,7 @@ function ConversationSummaryView({ conv, title, speak }: { conv: ConversationRec
           {s.vocabulary.map((v) => (
             <li key={v.fr} className="flex items-center gap-2 rounded-xl bg-surface-2/60 px-3 py-2">
               <SpeakButton onSpeak={() => speak(v.fr)} className="size-7" />
-              <span><span className="font-medium" lang="fr">{v.fr}</span><span className="block text-xs text-muted">{v.en}</span></span>
+              <span><span className="font-medium" lang={tl}>{v.fr}</span><span className="block text-xs text-muted">{v.en}</span></span>
             </li>
           ))}
         </ul>

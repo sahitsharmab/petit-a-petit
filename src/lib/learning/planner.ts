@@ -1,4 +1,5 @@
-import { ORDERED_SKILLS, getSkill } from "@/lib/content/curriculum";
+import { getSkill, orderedSkills } from "@/lib/content/curriculum";
+import { baseSkillId, skillIdFor, type Lang } from "@/lib/content/languages";
 import { daysBetween } from "./dates";
 import { EMPTY_MASTERY, PASS_MASTERY, STRUGGLE_MASTERY, effectiveMastery, isPassed, type MasteryState } from "./mastery";
 import { conjOf, type FocusPattern } from "./patterns";
@@ -30,6 +31,8 @@ export interface RecentMistake {
 
 export interface PlannerInput {
   today: string;
+  /** The learner's course (default French). */
+  lang?: Lang;
   progress: Record<string, SkillProgress>;
   /** Review items with dueDate <= today. */
   dueItems: ReviewCandidate[];
@@ -60,18 +63,18 @@ export interface LessonPlan {
 const progressOf = (input: PlannerInput, id: string): SkillProgress => input.progress[id] ?? EMPTY_MASTERY;
 
 /** The first skill in curriculum order that hasn't been passed yet. */
-export function frontierSkill(input: Pick<PlannerInput, "progress">): string {
-  for (const s of ORDERED_SKILLS) {
+export function frontierSkill(input: Pick<PlannerInput, "progress" | "lang">): string {
+  for (const s of orderedSkills(input.lang)) {
     const p = input.progress[s.id];
     if (!p?.passedAt && !isPassed(p ?? EMPTY_MASTERY)) return s.id;
   }
-  return "w12-review";
+  return skillIdFor(input.lang ?? "fr", "w12-review");
 }
 
 /** Passed skills that have slipped badly — they need an extra practice day. */
 export function strugglingSkills(input: PlannerInput, beforeSkill: string): string[] {
   const out: string[] = [];
-  for (const s of ORDERED_SKILLS) {
+  for (const s of orderedSkills(input.lang)) {
     if (s.id === beforeSkill) break;
     const p = progressOf(input, s.id);
     if (p.attempts < 6 || s.category === "review") continue;
@@ -106,7 +109,7 @@ export function chooseReviewKeys(input: PlannerInput, primary: string, count: nu
   // Due skill-level reviews.
   for (const d of input.dueItems.filter((x) => x.itemKey.startsWith("skill:"))) add(d.itemKey, d.skillId);
   // Fallback: weakest practised skills.
-  const practiced = ORDERED_SKILLS.filter((s) => s.id !== primary && progressOf(input, s.id).attempts > 0 && s.category !== "review")
+  const practiced = orderedSkills(input.lang).filter((s) => s.id !== primary && progressOf(input, s.id).attempts > 0 && s.category !== "review")
     .sort((a, b) => effectiveMastery(progressOf(input, a.id).mastery, progressOf(input, a.id).lastPracticedAt, input.today)
       - effectiveMastery(progressOf(input, b.id).mastery, progressOf(input, b.id).lastPracticedAt, input.today));
   for (const s of practiced) add(`skill:${s.id}`, s.id);
@@ -152,7 +155,7 @@ export function planDailyLesson(input: PlannerInput): LessonPlan {
   }
 
   const templateId =
-    getSkill(primary).id === "w12-assessment" ? "assessment"
+    baseSkillId(primary) === "w12-assessment" ? "assessment"
       : mode === "consolidate" ? "daily-consolidate"
       : mode === "welcome-back" ? "welcome-back"
       : "daily-standard";

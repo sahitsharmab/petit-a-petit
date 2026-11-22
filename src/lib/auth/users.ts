@@ -1,15 +1,24 @@
 /**
- * Who can use this app, from environment variables.
+ * Who can use this app.
  *
- * Local mode (APP_USERS unset, not on Vercel): one learner, no login, data in data/french.db.
+ * Local mode (default, not on Vercel, ACCOUNTS_DB_URL unset): one learner, no login, data in
+ * data/french.db.
  *
- * Users mode (APP_USERS="sahit,ana"): each id needs
- *   USER_<ID>_PASSWORD_HASH  from `npm run hash-password`
- *   USER_<ID>_DB_URL         libsql://… Turso URL (defaults to file:data/<id>.db when not on Vercel)
- *   USER_<ID>_DB_TOKEN       Turso auth token (remote databases)
- *   USER_<ID>_NAME           optional display name
- * plus SESSION_SECRET (32+ random characters).
+ * Accounts mode (always on Vercel, or locally with ACCOUNTS_DB_URL set): people sign up on
+ * /signup. Accounts live in one small accounts database; each account gets its own learner
+ * database, created at sign-up (a Turso database when TURSO_API_TOKEN + TURSO_ORG are set,
+ * otherwise a file next to the accounts database).
+ *
+ *   SESSION_SECRET     32+ random characters (signs the login cookie)
+ *   ACCOUNTS_DB_URL    libsql://… Turso URL of the accounts database (a file path locally)
+ *   ACCOUNTS_DB_TOKEN  its Turso token
+ *   TURSO_API_TOKEN    Turso platform API token, used to create each learner's database
+ *   TURSO_ORG          Turso organization (account) slug
+ *   TURSO_GROUP        optional Turso group for new databases (default "default")
+ *   SIGNUPS            optional; "closed" turns sign-up off
  */
+
+import { isLang, type Lang } from "@/lib/content/languages";
 
 export interface AppUser {
   id: string;
@@ -17,47 +26,37 @@ export interface AppUser {
   passwordHash: string | null;
   dbUrl: string;
   dbToken?: string;
+  /** The course this learner studies (chosen at sign-up). */
+  lang: Lang;
 }
 
 export class AuthConfigError extends Error {}
 
-const ID = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+export const USERNAME = /^[a-z0-9][a-z0-9_-]{2,31}$/;
 
-export const isHosted = () => !!process.env.VERCEL;
+export const isHosted = (env: NodeJS.ProcessEnv = process.env) => !!env.VERCEL;
 
-export function authEnabled(): boolean {
-  return !!process.env.APP_USERS?.trim() || isHosted();
+export function authEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return isHosted(env) || !!env.ACCOUNTS_DB_URL?.trim();
 }
 
-function envKey(id: string) {
-  return id.toUpperCase().replace(/-/g, "_");
+export function signupsOpen(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.SIGNUPS?.trim().toLowerCase() !== "closed";
 }
 
-export function loadUsers(env: NodeJS.ProcessEnv = process.env): AppUser[] {
-  const list = env.APP_USERS?.trim();
-  if (!list) {
-    if (env.VERCEL) throw new AuthConfigError("APP_USERS is not set. The hosted app refuses to run without logins.");
-    const file = env.FRANCAIS_DB_PATH ?? "data/french.db";
-    return [{ id: "local", name: "", passwordHash: null, dbUrl: file }];
-  }
-  const ids = list.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-  return ids.map((id) => {
-    if (!ID.test(id)) throw new AuthConfigError(`Invalid user id "${id}" in APP_USERS (use lowercase letters, digits, - or _).`);
-    const k = envKey(id);
-    const passwordHash = env[`USER_${k}_PASSWORD_HASH`]?.trim();
-    if (!passwordHash) throw new AuthConfigError(`USER_${k}_PASSWORD_HASH is not set.`);
-    const dbUrl = env[`USER_${k}_DB_URL`]?.trim() || (env.VERCEL ? "" : `data/${id}.db`);
-    if (!dbUrl) throw new AuthConfigError(`USER_${k}_DB_URL is not set.`);
-    if (env.VERCEL && !/^(libsql|https?):/i.test(dbUrl)) throw new AuthConfigError(`USER_${k}_DB_URL must be a remote libsql:// URL on Vercel.`);
-    const name = env[`USER_${k}_NAME`]?.trim() || id.charAt(0).toUpperCase() + id.slice(1);
-    return { id, name, passwordHash, dbUrl, dbToken: env[`USER_${k}_DB_TOKEN`]?.trim() || undefined };
-  });
+/** The single learner of local mode (French unless FRANCAIS_LANG=de). */
+export function localUser(env: NodeJS.ProcessEnv = process.env): AppUser {
+  const lang = isLang(env.FRANCAIS_LANG) ? env.FRANCAIS_LANG : "fr";
+  return { id: "local", name: "", passwordHash: null, dbUrl: env.FRANCAIS_DB_PATH ?? (lang === "fr" ? "data/french.db" : `data/${lang}.db`), lang };
 }
 
-export function findUser(login: string, env: NodeJS.ProcessEnv = process.env): AppUser | null {
-  const q = login.trim().toLowerCase();
-  if (!q) return null;
-  return loadUsers(env).find((u) => u.passwordHash && (u.id === q || u.name.toLowerCase() === q)) ?? null;
+const remote = (url: string) => /^(libsql|https?|wss?):/i.test(url);
+
+export function accountsDbConfig(env: NodeJS.ProcessEnv = process.env): { url: string; authToken?: string } {
+  const url = env.ACCOUNTS_DB_URL?.trim() ?? "";
+  if (!url) throw new AuthConfigError("ACCOUNTS_DB_URL is not set. The hosted app refuses to run without accounts.");
+  if (isHosted(env) && !remote(url)) throw new AuthConfigError("ACCOUNTS_DB_URL must be a remote libsql:// URL on Vercel.");
+  return { url, authToken: env.ACCOUNTS_DB_TOKEN?.trim() || undefined };
 }
 
 export function sessionSecret(env: NodeJS.ProcessEnv = process.env): string {

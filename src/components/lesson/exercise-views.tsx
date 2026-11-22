@@ -1,4 +1,5 @@
 "use client";
+import { useCourse } from "@/components/course/course-context";
 import * as React from "react";
 import { LayoutGroup, motion } from "motion/react";
 import { Check, Eye, Headphones, Mic, MicOff, RotateCcw, Snail, Undo2, Volume2, X } from "lucide-react";
@@ -51,13 +52,14 @@ export function hasAnswer(ex: PublicExercise, a: AnswerState) {
 function TextAnswer({ value, onChange, onSubmit, locked, multiline, placeholder, label, feedback }: {
   value: string; onChange: (v: string) => void; onSubmit: () => void; locked: boolean; multiline?: boolean; placeholder?: string; label: string; feedback: Feedback | null;
 }) {
+  const tl = useCourse().code;
   const ref = React.useRef<HTMLInputElement & HTMLTextAreaElement>(null);
   React.useEffect(() => {
     if (!locked) ref.current?.focus({ preventScroll: true });
   }, [locked]);
   const tone = feedback ? (feedback.verdict === "correct" ? "border-success ring-success/20" : feedback.verdict === "almost" ? "border-warning ring-warning/20" : "border-danger ring-danger/15") : "border-border focus:border-primary ring-primary/15";
   const common = {
-    ref, value, "aria-label": label, placeholder, lang: "fr", disabled: locked, autoComplete: "off", autoCorrect: "off", autoCapitalize: "off", spellCheck: false,
+    ref, value, "aria-label": label, placeholder, lang: tl, disabled: locked, autoComplete: "off", autoCorrect: "off", autoCapitalize: "off", spellCheck: false,
     onChange: (e: React.ChangeEvent<HTMLInputElement & HTMLTextAreaElement>) => onChange(e.target.value),
     onKeyDown: (e: React.KeyboardEvent) => {
       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSubmit(); }
@@ -73,6 +75,7 @@ function TextAnswer({ value, onChange, onSubmit, locked, multiline, placeholder,
 }
 
 function OptionList({ ex, answer, setAnswer, feedback, locked, onSubmit }: Pick<ViewProps, "ex" | "answer" | "setAnswer" | "feedback" | "locked" | "onSubmit">) {
+  const tl = useCourse().code;
   const opts = ex.options ?? [];
   const refs = React.useRef<(HTMLButtonElement | null)[]>([]);
   // Radio-group keyboard pattern: one tab stop; arrows move focus and select (wrapping), Home/End jump.
@@ -130,7 +133,7 @@ function OptionList({ ex, answer, setAnswer, feedback, locked, onSubmit }: Pick<
               isCorrect ? "border-success bg-success text-white dark:text-[#0d1f1b]" : isWrongPick ? "border-danger bg-danger text-white dark:text-[#2a1110]" : selected ? "border-primary bg-primary text-primary-ink" : "border-border text-muted")}>
               {isCorrect ? <Check className="size-4" /> : isWrongPick ? <X className="size-4" /> : i + 1}
             </span>
-            <span className="flex-1" lang={ex.type === "listening" && ex.mode === "choice" ? "en" : "fr"}>{o}</span>
+            <span className="flex-1" lang={ex.type === "listening" && ex.mode === "choice" ? "en" : tl}>{o}</span>
           </motion.button>
         );
       })}
@@ -145,12 +148,14 @@ function PromptCard({ children, className }: { children: React.ReactNode; classN
 // ─────────────────────────── per-type views ───────────────────────────
 
 function MultipleChoiceView(p: ViewProps) {
-  const isFrenchPrompt = /___|[éèàçù]/.test(p.ex.prompt) || p.ex.prompt.startsWith("«");
+  const tl = useCourse().code;
+  // Target-language prompts have a gap, accents or quotes; English questions get no speak button.
+  const isFrenchPrompt = /___|[éèàçùäöüß]/.test(p.ex.prompt) || p.ex.prompt.startsWith("«");
   return (
     <div className="space-y-5">
       <PromptCard>
         <div className="flex items-start gap-3">
-          <p className={cn("flex-1 font-display text-[1.45rem] leading-snug text-balance", "sm:text-[1.6rem]")} lang={isFrenchPrompt ? "fr" : "en"}>
+          <p className={cn("flex-1 font-display text-[1.45rem] leading-snug text-balance", "sm:text-[1.6rem]")} lang={isFrenchPrompt ? tl : "en"}>
             {renderBlank(p.ex.prompt)}
           </p>
           {p.ex.audioText && isFrenchPrompt && <SpeakButton onSpeak={() => p.speak(p.ex.audioText!)} />}
@@ -174,6 +179,7 @@ function renderBlank(text: string) {
 }
 
 function FillBlankView(p: ViewProps) {
+  const tl = useCourse().code;
   const ref = React.useRef<HTMLInputElement>(null);
   const before = p.ex.blank?.before ?? "";
   const after = p.ex.blank?.after ?? "";
@@ -183,9 +189,9 @@ function FillBlankView(p: ViewProps) {
   return (
     <div className="space-y-5">
       <PromptCard className="py-8">
-        <p className="font-display text-[1.55rem] leading-[2.4rem] sm:text-[1.75rem]" lang="fr">
+        <p className="font-display text-[1.55rem] leading-[2.4rem] sm:text-[1.75rem]" lang={tl}>
           {before}
-          <input ref={ref} value={p.answer.text} disabled={p.locked} aria-label="Missing word" lang="fr"
+          <input ref={ref} value={p.answer.text} disabled={p.locked} aria-label="Missing word" lang={tl}
             autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
             onChange={(e) => p.setAnswer({ ...p.answer, text: e.target.value })}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); p.onSubmit(); } }}
@@ -201,15 +207,16 @@ function FillBlankView(p: ViewProps) {
 }
 
 function ConjugationView(p: ViewProps) {
+  const tl = useCourse().code;
   const [verb, subject] = p.ex.prompt.split(" → ");
   return (
     <div className="space-y-5">
       <PromptCard className="text-center">
         <p className="text-xs font-medium uppercase tracking-[0.14em] text-subtle">{p.ex.promptNote}</p>
         <div className="mt-3 flex flex-wrap items-baseline justify-center gap-3">
-          <span className="rounded-xl bg-primary-soft px-3 py-1 font-display text-2xl text-primary" lang="fr">{subject}</span>
+          <span className="rounded-xl bg-primary-soft px-3 py-1 font-display text-2xl text-primary" lang={tl}>{subject}</span>
           <span className="text-subtle">+</span>
-          <span className="font-display text-[2rem] italic" lang="fr">{verb}</span>
+          <span className="font-display text-[2rem] italic" lang={tl}>{verb}</span>
         </div>
         {p.showTranslations && p.ex.translation && <p className="mt-3 text-sm text-muted">“{p.ex.translation}”</p>}
       </PromptCard>
@@ -220,6 +227,7 @@ function ConjugationView(p: ViewProps) {
 }
 
 function TranslationView(p: ViewProps) {
+  const course = useCourse();
   return (
     <div className="space-y-5">
       <PromptCard>
@@ -227,17 +235,18 @@ function TranslationView(p: ViewProps) {
         <p className="mt-2 font-display text-[1.5rem] leading-snug text-balance sm:text-[1.65rem]">{p.ex.prompt}</p>
       </PromptCard>
       <TextAnswer value={p.answer.text} onChange={(v) => p.setAnswer({ ...p.answer, text: v })} onSubmit={p.onSubmit} locked={p.locked} multiline
-        placeholder="Écrivez en français…" label="Your French translation" feedback={p.feedback} />
+        placeholder={course.writePlaceholder} label={`Your ${course.name} translation`} feedback={p.feedback} />
     </div>
   );
 }
 
 function TransformationView(p: ViewProps) {
+  const tl = useCourse().code;
   return (
     <div className="space-y-5">
       <PromptCard>
         <div className="flex items-start gap-3">
-          <p className="flex-1 font-display text-[1.5rem] leading-snug" lang="fr">{p.ex.prompt}</p>
+          <p className="flex-1 font-display text-[1.5rem] leading-snug" lang={tl}>{p.ex.prompt}</p>
           {p.ex.audioText && <SpeakButton onSpeak={() => p.speak(p.ex.prompt)} />}
         </div>
         {p.ex.promptNote && <p className="mt-2 text-sm text-muted">{p.ex.promptNote}</p>}
@@ -250,6 +259,8 @@ function TransformationView(p: ViewProps) {
 }
 
 function SentenceBuilderView(p: ViewProps) {
+  const course = useCourse();
+  const tl = course.code;
   const tiles = p.ex.tiles ?? [];
   const chosen = p.answer.tiles;
   const add = (i: number) => !p.locked && p.setAnswer({ ...p.answer, tiles: [...chosen, i] });
@@ -258,7 +269,7 @@ function SentenceBuilderView(p: ViewProps) {
   return (
     <div className="space-y-5">
       <PromptCard>
-        <p className="text-xs font-medium uppercase tracking-[0.14em] text-subtle">Build this in French</p>
+        <p className="text-xs font-medium uppercase tracking-[0.14em] text-subtle">Build this in {course.name}</p>
         <p className="mt-2 font-display text-[1.45rem] leading-snug text-balance">{p.ex.prompt}</p>
       </PromptCard>
       <LayoutGroup>
@@ -268,7 +279,7 @@ function SentenceBuilderView(p: ViewProps) {
           {chosen.map((ti, pos) => (
             <motion.button layout layoutId={`tile-${ti}`} key={`c-${ti}`} type="button" disabled={p.locked} onClick={() => remove(pos)}
               aria-label={`Remove ${tiles[ti]}`}
-              className="rounded-xl border border-primary/30 bg-surface px-3.5 py-2 text-[1.02rem] font-medium shadow-soft" lang="fr">
+              className="rounded-xl border border-primary/30 bg-surface px-3.5 py-2 text-[1.02rem] font-medium shadow-soft" lang={tl}>
               {tiles[ti]}
             </motion.button>
           ))}
@@ -279,7 +290,7 @@ function SentenceBuilderView(p: ViewProps) {
               <span key={`b-${i}`} className="rounded-xl border border-dashed border-border px-3.5 py-2 text-[1.02rem] text-transparent select-none" aria-hidden>{t}</span>
             ) : (
               <motion.button layout layoutId={`tile-${i}`} key={`b-${i}`} type="button" disabled={p.locked} onClick={() => add(i)}
-                className="rounded-xl border border-border bg-surface px-3.5 py-2 text-[1.02rem] font-medium shadow-soft transition-colors hover:border-primary/50 hover:bg-primary-soft/50" lang="fr">
+                className="rounded-xl border border-border bg-surface px-3.5 py-2 text-[1.02rem] font-medium shadow-soft transition-colors hover:border-primary/50 hover:bg-primary-soft/50" lang={tl}>
                 {t}
               </motion.button>
             ),
@@ -299,6 +310,7 @@ function SentenceBuilderView(p: ViewProps) {
 }
 
 function ListeningView(p: ViewProps) {
+  const tl = useCourse().code;
   const [plays, setPlays] = React.useState(0);
   const reveal = p.answer.transcriptShown;
   const setReveal = (v: boolean) => p.setAnswer({ ...p.answer, transcriptShown: v });
@@ -336,7 +348,7 @@ function ListeningView(p: ViewProps) {
         {(!p.speechSupported || reveal) && !p.locked && (
           <div className="rounded-xl bg-surface-2 px-3 py-2 text-sm">
             {!p.speechSupported && <span className="mb-1 flex items-center justify-center gap-1 text-xs text-muted"><Headphones className="size-3.5" /> Audio isn&apos;t available in this browser — read instead:</span>}
-            <p lang="fr">{text}</p>
+            <p lang={tl}>{text}</p>
             <p className="mt-1 text-xs text-muted">With the text shown, this counts as supported listening practice.</p>
           </div>
         )}
@@ -355,6 +367,7 @@ function ListeningView(p: ViewProps) {
 }
 
 function DialogueView(p: ViewProps) {
+  const tl = useCourse().code;
   const lines = React.useMemo(() => p.ex.lines ?? [], [p.ex.lines]);
   const played = React.useRef(false);
   const { autoPlay, speechSupported, speak } = p;
@@ -373,10 +386,10 @@ function DialogueView(p: ViewProps) {
         {lines.map((l, i) => (
           <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
             className={cn("flex items-end gap-2", l.who === "you" && "justify-end")}>
-            {l.who === "them" && <div className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-soft text-xs font-semibold text-primary" aria-hidden>FR</div>}
+            {l.who === "them" && <div className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-soft text-xs font-semibold text-primary" aria-hidden>{tl.toUpperCase()}</div>}
             <div className={cn("max-w-[85%] rounded-2xl px-4 py-3 shadow-soft", l.who === "them" ? "rounded-bl-md border border-border bg-surface" : "rounded-br-md bg-primary text-primary-ink")}>
               <div className="flex items-start gap-2">
-                <p className="text-[1.05rem]" lang="fr">{l.fr}</p>
+                <p className="text-[1.05rem]" lang={tl}>{l.fr}</p>
                 {l.who === "them" && <SpeakButton onSpeak={() => p.speak(l.fr)} className="-my-1 -mr-2" />}
               </div>
               {p.showTranslations && <p className={cn("mt-1 text-sm", l.who === "them" ? "text-muted" : "text-primary-ink/80")}>{l.en}</p>}
@@ -385,7 +398,7 @@ function DialogueView(p: ViewProps) {
         ))}
         {chosen && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end">
-            <div className={cn("max-w-[85%] rounded-2xl rounded-br-md px-4 py-3 shadow-soft", p.feedback?.verdict === "correct" ? "bg-success text-white dark:text-[#0d1f1b]" : "bg-danger text-white dark:text-[#2a1110]")} lang="fr">{chosen}</div>
+            <div className={cn("max-w-[85%] rounded-2xl rounded-br-md px-4 py-3 shadow-soft", p.feedback?.verdict === "correct" ? "bg-success text-white dark:text-[#0d1f1b]" : "bg-danger text-white dark:text-[#2a1110]")} lang={tl}>{chosen}</div>
           </motion.div>
         )}
       </div>

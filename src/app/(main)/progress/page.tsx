@@ -9,11 +9,14 @@ import { AccuracyChart, Heatmap, MinutesChart } from "@/components/progress/char
 import { StartLessonButton } from "@/components/dashboard/start-lesson-button";
 import { cn, pct } from "@/lib/utils";
 
+import { LANG_META } from "@/lib/content/languages";
+
 export const metadata: Metadata = { title: "Progress" };
 export const dynamic = "force-dynamic";
 
 export default async function ProgressPage() {
-  const d = await getProgressData(await getDb());
+  const db = await getDb();
+  const d = await getProgressData(db);
   const tiles = [
     { icon: Flame, label: "Current streak", value: `${d.streak.current}`, sub: `best ${d.streak.best}` },
     { icon: Clock, label: "Minutes studied", value: `${d.totals.minutes}`, sub: `${d.totals.studyDays} study days` },
@@ -125,12 +128,12 @@ export default async function ProgressPage() {
               <ul className="space-y-2.5 text-sm">
                 {d.troubleItems.map((t) => (
                   <li key={t.label} className="flex items-start justify-between gap-3">
-                    <span><span className="font-medium" lang="fr">{t.label}</span><span className="block text-xs text-muted">{t.skill}</span></span>
+                    <span><span className="font-medium" lang={db.lang}>{t.label}</span><span className="block text-xs text-muted">{t.skill}</span></span>
                     <Badge tone="warning" className="shrink-0">due {formatDateShort(t.due)}</Badge>
                   </li>
                 ))}
               </ul>
-            ) : <p className="text-sm text-muted">Nothing is slipping. Très bien !</p>}
+            ) : <p className="text-sm text-muted">Nothing is slipping. {LANG_META[db.lang].praise.veryGood}</p>}
           </CardContent>
         </Card>
         <Card>

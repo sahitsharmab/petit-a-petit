@@ -15,7 +15,8 @@ export const dynamic = "force-dynamic";
 
 export default async function LessonHistoryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const data = await getLessonHistory(await getDb(), id);
+  const db = await getDb();
+  const data = await getLessonHistory(db, id);
   if (!data) notFound();
   const { lesson, exercises, sessions, attempts } = data;
   const done = sessions.filter((s) => s.status === "completed");
@@ -49,18 +50,18 @@ export default async function LessonHistoryPage({ params }: { params: Promise<{ 
                 {first && (first.verdict === "correct" ? <Badge tone="success"><Check /> First try</Badge> : first.verdict === "almost" ? <Badge tone="warning"><CircleAlert /> Almost</Badge> : <Badge tone="danger"><X /> Missed</Badge>)}
               </div>
               <p className="mt-2 font-medium">{ex.instruction}: <span className="font-normal">{ex.type === "listening" ? ex.audioText : ex.prompt}</span></p>
-              {ex.lines?.map((l, k) => <p key={k} className="mt-1 text-sm text-muted" lang="fr">— {l.fr} <span className="text-subtle">({l.en})</span></p>)}
+              {ex.lines?.map((l, k) => <p key={k} className="mt-1 text-sm text-muted" lang={db.lang}>— {l.fr} <span className="text-subtle">({l.en})</span></p>)}
               {mine.length > 0 && (
                 <ul className="mt-3 space-y-1 text-sm">
                   {mine.map((a) => (
                     <li key={a.id} className={cn("flex gap-2", a.verdict === "correct" ? "text-success" : a.verdict === "almost" ? "text-warning" : "text-danger")}>
                       {a.verdict === "correct" ? <Check className="mt-0.5 size-4 shrink-0" /> : a.verdict === "almost" ? <CircleAlert className="mt-0.5 size-4 shrink-0" /> : <X className="mt-0.5 size-4 shrink-0" />}
-                      <span><span lang="fr">{a.answer || "—"}</span>{a.note && <span className="block text-muted">{a.note}</span>}{a.judgedBy === "ai" && <span className="text-xs text-subtle"> (AI-checked)</span>}</span>
+                      <span><span lang={db.lang}>{a.answer || "—"}</span>{a.note && <span className="block text-muted">{a.note}</span>}{a.judgedBy === "ai" && <span className="text-xs text-subtle"> (AI-checked)</span>}</span>
                     </li>
                   ))}
                 </ul>
               )}
-              <p className="mt-3 text-sm"><span className="text-muted">Answer: </span><span className="font-medium" lang="fr">{correct}</span></p>
+              <p className="mt-3 text-sm"><span className="text-muted">Answer: </span><span className="font-medium" lang={db.lang}>{correct}</span></p>
               <p className="mt-1 text-sm text-muted">{ex.explanation}</p>
             </li>
           );

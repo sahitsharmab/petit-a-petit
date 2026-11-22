@@ -1,6 +1,7 @@
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
 import type { BatchItem } from "drizzle-orm/batch";
-import { SKILLS, WEEKS } from "@/lib/content/curriculum";
+import { courseSkills, courseWeeks } from "@/lib/content/curriculum";
+import type { Lang } from "@/lib/content/languages";
 import { TEMPLATES } from "@/lib/content/templates";
 import * as schema from "./schema";
 
@@ -10,8 +11,10 @@ import * as schema from "./schema";
  * self-describing. User progress tables are never touched here.
  * Runs as one atomic batch (a single round trip to a remote database).
  */
-export async function syncSeed(db: LibSQLDatabase<typeof schema>) {
+export async function syncSeed(db: LibSQLDatabase<typeof schema> & { lang?: Lang }) {
   const q: BatchItem<"sqlite">[] = [];
+  const WEEKS = courseWeeks(db.lang);
+  const SKILLS = courseSkills(db.lang);
   for (const w of WEEKS) {
     q.push(db.insert(schema.curriculumWeeks).values(w)
       .onConflictDoUpdate({ target: schema.curriculumWeeks.number, set: { title: w.title, focus: w.focus, cefr: w.cefr, description: w.description } }));
@@ -28,6 +31,6 @@ export async function syncSeed(db: LibSQLDatabase<typeof schema>) {
     const row = { id: t.id, name: t.name, description: t.description, blocks: t.blocks };
     q.push(db.insert(schema.lessonTemplates).values(row).onConflictDoUpdate({ target: schema.lessonTemplates.id, set: row }));
   }
-  q.push(db.insert(schema.learningSettings).values({ id: 1 }).onConflictDoNothing());
+  q.push(db.insert(schema.learningSettings).values(schema.NEW_LEARNER_SETTINGS).onConflictDoNothing());
   await db.batch(q as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
 }
