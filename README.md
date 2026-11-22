@@ -1,11 +1,31 @@
 # petit à petit — a private French tutor
 
-A local-first French learning app for an English speaker in France, from A1 towards A2/B1.
-Open `http://localhost:3000` each evening: it knows what you learned yesterday, what you
+A local-first French learning app for an English speaker living in France, from A1 towards A2.
+Open `http://127.0.0.1:3000` each evening: it knows what you learned yesterday, what you
 struggled with, what's due for review and what comes next, and builds today's 15–20 minute
 lesson from that.
 
-*« Petit à petit, l'oiseau fait son nid. »*
+*« Petit à petit, l'oiseau fait son nid. »* (Little by little, the bird builds its nest.)
+
+**Why it exists.** Generic language apps optimise for streaks and gems. This one acts like a patient
+private tutor: one structured 12-week course, lessons rebuilt every day from your own mistakes,
+honest scoring, and everything stored on your own machine. It works fully offline; AI is optional.
+
+**Highlights**
+
+- **A daily lesson planned for you**, based on mastery, spaced repetition and yesterday's mistakes, with a one-line reason for each choice.
+- **8 exercise types**, including listening, dictation and sentence building, all with instant feedback that explains the rule.
+- **A real conjugation engine** (~80 verbs, three tenses) that generates unlimited, grammatically correct practice.
+- **Guided real-life conversations** (café, landlord, doctor…) that understand free typing, with an optional AI partner.
+- **Honest progress:** the headline score counts only exact first answers; near-misses, hints and retries are reported separately.
+- **Private by design:** SQLite on your disk, server bound to localhost, JSON backups with automatic safety copies.
+
+| | |
+|---|---|
+| **Stack** | Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · SQLite (better-sqlite3 + Drizzle ORM) · Zod |
+| **AI (optional)** | Anthropic Claude or a local Ollama model, schema-validated with automatic local fallback |
+| **Voice** | Browser Web Speech API (no key, no cloud service of ours) |
+| **Quality** | 121 Vitest unit/integration tests · Playwright end-to-end test · ESLint · strict TypeScript |
 
 ## Quick start
 
@@ -14,7 +34,7 @@ Requires Node.js 20+ (tested on Node 22).
 ```bash
 npm install
 npm run build
-npm start          # → http://localhost:3000
+npm start          # → http://127.0.0.1:3000
 ```
 
 For development with hot reload use `npm run dev`. The SQLite database is created
@@ -30,7 +50,7 @@ progress in `data/backups/` first.
 |---|---|
 | **Today** (`/`) | Today's lesson (Week · Day), why it was chosen, streak, weekly minutes, curriculum progress, recently learned, what needs review, "since last time", resume. |
 | **Lesson player** | One challenge at a time: multiple choice, fill-in-the-blank, sentence builder, translation, grammar transformation, conjugation, listening (dictation & comprehension) and dialogue. Instant feedback with explanation, rule, word-level correction, hint → retry → reveal, a retry round for missed items, keyboard support, accent bar, speech synthesis. State is saved after every step, so a refresh resumes exactly where you were. |
-| **Learn** (`/learn`) | The 12-week roadmap; practise any skill or revise any week. |
+| **Learn** (`/learn`) | The 12-week roadmap (week 12 is a Course review of weeks 1–10); practise any skill or revise any week. |
 | **Practice** (`/practice`) | 8 real-life conversations (café, neighbour, landlord, directions, doctor, customer service, recruiter, friend). Offline: guided branching scripts that understand free typing. With AI: an open conversation partner that adapts to your level. Hint / translate / explain, optional speech input, end-of-conversation feedback. |
 | **Progress** (`/progress`) | Streak, minutes, sessions, lessons, heatmap, accuracy over time, weekly/monthly time, mastery by topic, common mistakes, slipping items, recommendations. Computed only from recorded activity. |
 | **History** (`/history`) | Every past lesson with your answers, corrections and explanations; past conversations. |
@@ -43,9 +63,20 @@ progress in `data/backups/` first.
 - **Consolidation:** if a passed topic slips below 45% with repeated recent mistakes, the next lesson is an extra-practice day on it before moving on.
 - **Spaced repetition** (SM-2 style) runs for every item (individual verb forms such as « tu parles », sentences, questions) and for each skill: wrong → tomorrow, right → 1 → 3 → ~7 days … (max 60).
 - **Warm-up** = yesterday's unresolved mistakes first, then due items (most overdue first), then weakest skills.
+- **Targeted pattern review:** if « nous » endings are missed 2+ times in 14 days, the next warm-up leads with one missed form plus one fresh verb. The focus retires after two unaided correct answers on different verbs, at least one on a later day.
+- **Honest scoring:** a lesson's headline accuracy counts only exact, unaided first answers. Almost-right, hinted, transcript-supported, fixed-on-retry and missed answers are shown separately, and the recap shows your original mistake next to the correction.
 - **Breaks:** after ≥ 5 days away you get a "welcome back" lesson with a longer warm-up. Nothing resets.
 - **Streaks are gentle:** a single missed day doesn't break them.
-- All daily boundaries use **Europe/Paris**. Today's lesson is created once per Paris date and persisted.
+- All daily boundaries use **Europe/Paris**. Today's lesson is created once per Paris date and persisted. A lesson keeps the date it was assigned; the streak is credited on the Paris date you finish it.
+
+## Voice
+
+Audio uses the browser's built-in **Web Speech API**: no API key, no extra cost, and no audio sent
+to any service run by this app.
+
+- **Listening & dictation** use `speechSynthesis`, which picks the best French (`fr-FR`) voice installed on your system. Speed is set in Settings → Speaking speed, which also has a Test button. If no French voice is found, install one in your OS speech settings (on Windows: Settings → Time & language → Speech → Add voices → Français).
+- **Speaking in Practice** uses `SpeechRecognition` (Chrome/Edge). Note that in Chrome and Edge the browser vendor performs recognition in its own cloud. Typing always works instead.
+- Without speech support, listening exercises show the text, and that counts as supported (not unaided) listening.
 
 Content comes from a reviewed curriculum (`src/lib/content/`), a conjugation engine
 (`src/lib/french/`, ~80 verbs: regular, stem-changing, irregular, reflexive; présent, passé
