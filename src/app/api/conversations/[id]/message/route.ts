@@ -8,6 +8,6 @@ const Body = z.object({ text: z.string().max(400).default(""), replyIndex: z.num
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
   const body = await parseBody(req, Body);
-  const conv = await sendMessage(getDb(), id, body.text, body.replyIndex);
+  const conv = await sendMessage(await getDb(), id, body.text, body.replyIndex);
   return ok({ conversation: conv, finished: isScriptFinished(conv) });
 });

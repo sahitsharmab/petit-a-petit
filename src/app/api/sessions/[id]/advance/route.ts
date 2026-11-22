@@ -9,5 +9,5 @@ const Body = z.object({ fromIndex: z.number().int().min(0).optional() });
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
   const { fromIndex } = await parseBody(req, Body);
-  return ok({ state: advance(getDb(), id, fromIndex) });
+  return ok({ state: await advance(await getDb(), id, fromIndex) });
 });

@@ -17,7 +17,7 @@ const Body = z.object({
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
   const body = await parseBody(req, Body);
-  const db = getDb();
-  const res = await submitAttempt(db, id, body.exerciseId, body.answer, body.hintsUsed, new Date(), createAnswerJudge(db), body.attemptNo, { transcriptShown: body.transcriptShown });
+  const db = await getDb();
+  const res = await submitAttempt(db, id, body.exerciseId, body.answer, body.hintsUsed, new Date(), await createAnswerJudge(db), body.attemptNo, { transcriptShown: body.transcriptShown });
   return ok(res);
 });

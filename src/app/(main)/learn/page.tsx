@@ -16,9 +16,9 @@ export const dynamic = "force-dynamic";
 
 const STATUS_LABEL = { new: "Not started", learning: "Learning", reviewing: "Reviewing", mastered: "Mastered" } as const;
 
-export default function LearnPage() {
-  const db = getDb();
-  const progress = loadProgress(db);
+export default async function LearnPage() {
+  const db = await getDb();
+  const progress = await loadProgress(db);
   const frontier = frontierSkill({ progress });
   const frontierWeek = SKILLS.find((s) => s.id === frontier)!.week;
   const today = parisDate();

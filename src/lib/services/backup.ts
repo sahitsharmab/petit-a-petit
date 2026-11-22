@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getTableColumns } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import type { SQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
 import type { DB } from "@/lib/db";
@@ -23,8 +24,9 @@ const NAMES = Object.keys(TABLES) as TableName[];
 
 export const BACKUP_VERSION = 1;
 
-export function exportProgress(db: DB) {
-  const data = Object.fromEntries(NAMES.map((n) => [n, db.select().from(TABLES[n]).all()]));
+export async function exportProgress(db: DB) {
+  const data: Record<string, unknown[]> = {};
+  for (const n of NAMES) data[n] = await db.select().from(TABLES[n]).all();
   return { app: "petit-a-petit", version: BACKUP_VERSION, exportedAt: new Date().toISOString(), data };
 }
 
@@ -138,9 +140,22 @@ export function validateBackup(raw: unknown) {
 
 // ───────────────────────── import / reset ─────────────────────────
 
-function clear(db: DB) {
-  for (const n of [...NAMES].reverse()) db.delete(TABLES[n]).run();
+/** Delete statements for every user-data table, children first. */
+function clearQueries(db: DB): BatchItem<"sqlite">[] {
+  return [...NAMES].reverse().map((n) => db.delete(TABLES[n]));
 }
+
+/** Multi-row inserts in chunks (keeps each statement well under SQLite's variable limit). */
+function insertQueries(db: DB, data: Record<TableName, Record<string, unknown>[]>): BatchItem<"sqlite">[] {
+  const out: BatchItem<"sqlite">[] = [];
+  for (const n of NAMES) {
+    const rows = data[n];
+    for (let i = 0; i < rows.length; i += 50) out.push(db.insert(TABLES[n]).values(rows.slice(i, i + 50) as never));
+  }
+  return out;
+}
+
+type Batch = [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]];
 
 function countRows(data: Record<TableName, unknown[]>): Record<TableName, number> {
   return Object.fromEntries(NAMES.map((n) => [n, data[n].length])) as Record<TableName, number>;
@@ -152,10 +167,10 @@ export function previewImport(raw: unknown) {
 }
 
 /** Save the current progress as a JSON file before it is replaced. Keeps the 10 most recent. */
-export function writeSafetyCopy(db: DB, dir: string, now: Date = new Date()): string {
+export async function writeSafetyCopy(db: DB, dir: string, now: Date = new Date()): Promise<string> {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `pre-import-${now.toISOString().replace(/[:.]/g, "-")}.json`);
-  fs.writeFileSync(file, JSON.stringify(exportProgress(db), null, 2));
+  fs.writeFileSync(file, JSON.stringify(await exportProgress(db), null, 2));
   const old = fs.readdirSync(dir).filter((f) => /^pre-import-.*\.json$/.test(f)).sort().reverse().slice(10);
   for (const f of old) fs.rmSync(path.join(dir, f), { force: true });
   return file;
@@ -163,25 +178,20 @@ export function writeSafetyCopy(db: DB, dir: string, now: Date = new Date()): st
 
 /**
  * Replace all progress with a backup. The file is fully validated first, and the replacement
- * runs in one transaction, so an invalid file or row leaves the current progress untouched.
- * Pass `safetyCopyDir` to save the current progress to a file before replacing it.
+ * runs as one atomic batch, so an invalid file or row leaves the current progress untouched.
+ * Pass `safetyCopyDir` (local file databases) to save the current progress to a file first.
  */
-export function importProgress(db: DB, raw: unknown, opts: { safetyCopyDir?: string } = {}) {
+export async function importProgress(db: DB, raw: unknown, opts: { safetyCopyDir?: string } = {}) {
   const backup = validateBackup(raw);
-  const safetyCopy = opts.safetyCopyDir ? writeSafetyCopy(db, opts.safetyCopyDir) : undefined;
-  db.transaction((tx) => {
-    const t = tx as unknown as DB;
-    clear(t);
-    for (const n of NAMES) for (const row of backup.data[n]) t.insert(TABLES[n]).values(row as never).run();
-    t.insert(schema.learningSettings).values({ id: 1 }).onConflictDoNothing().run();
-  });
+  const safetyCopy = opts.safetyCopyDir ? await writeSafetyCopy(db, opts.safetyCopyDir) : undefined;
+  await db.batch([
+    ...clearQueries(db),
+    ...insertQueries(db, backup.data as Record<TableName, Record<string, unknown>[]>),
+    db.insert(schema.learningSettings).values({ id: 1 }).onConflictDoNothing(),
+  ] as unknown as Batch);
   return Object.assign(countRows(backup.data), safetyCopy ? { safetyCopy } : {}) as Record<TableName, number> & { safetyCopy?: string };
 }
 
-export function resetProgress(db: DB) {
-  db.transaction((tx) => {
-    const t = tx as unknown as DB;
-    clear(t);
-    t.insert(schema.learningSettings).values({ id: 1 }).run();
-  });
+export async function resetProgress(db: DB) {
+  await db.batch([...clearQueries(db), db.insert(schema.learningSettings).values({ id: 1 })] as unknown as Batch);
 }

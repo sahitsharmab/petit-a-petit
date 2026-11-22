@@ -12,8 +12,8 @@ import { pct } from "@/lib/utils";
 export const metadata: Metadata = { title: "History" };
 export const dynamic = "force-dynamic";
 
-export default function HistoryPage() {
-  const { lessons, conversations } = getHistory(getDb());
+export default async function HistoryPage() {
+  const { lessons, conversations } = await getHistory(await getDb());
   const byDate = new Map<string, typeof lessons>();
   for (const l of lessons) byDate.set(l.date, [...(byDate.get(l.date) ?? []), l]);
 

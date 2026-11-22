@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import type { DB } from "@/lib/db";
 import { schema } from "@/lib/db";
 import { SKILLS, WEEKS, getSkill } from "@/lib/content/curriculum";
@@ -65,51 +66,55 @@ function introFor(skillId: string, templateId: string, rationale: string[]): Les
   };
 }
 
-function insertLesson(db: DB, lesson: typeof schema.generatedLessons.$inferInsert, exercises: Exercise[]) {
-  db.transaction((tx) => {
-    tx.insert(schema.generatedLessons).values(lesson).run();
-    exercises.forEach((e, i) => {
-      tx.insert(schema.exercises).values({
-        id: e.id, lessonId: lesson.id!, position: i, type: e.type, skillId: e.skillId, section: e.section, itemKey: e.itemKey, payload: e,
-      }).run();
-    });
-  });
+/** Insert a lesson and its exercises atomically (one batch, one round trip). */
+async function insertLesson(db: DB, lesson: typeof schema.generatedLessons.$inferInsert, exercises: Exercise[]) {
+  const q: BatchItem<"sqlite">[] = [db.insert(schema.generatedLessons).values(lesson)];
+  if (exercises.length) {
+    q.push(db.insert(schema.exercises).values(exercises.map((e, i) => ({
+      id: e.id, lessonId: lesson.id!, position: i, type: e.type, skillId: e.skillId, section: e.section, itemKey: e.itemKey, payload: e,
+    }))));
+  }
+  await db.batch(q as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
 }
 
-export function getDailyLesson(db: DB, date: string): LessonRecord | null {
-  const row = db.select().from(schema.generatedLessons).where(eq(schema.generatedLessons.dailyKey, date)).get();
+export async function getDailyLesson(db: DB, date: string): Promise<LessonRecord | null> {
+  const row = await db.select().from(schema.generatedLessons).where(eq(schema.generatedLessons.dailyKey, date)).get();
   return row ? toRecord(row) : null;
 }
 
 /** What today's lesson will be (without creating it) — for the dashboard. */
-export function previewToday(db: DB, now: Date = new Date()): { lesson: LessonRecord | null; plan: LessonPlan } {
+export async function previewToday(db: DB, now: Date = new Date()): Promise<{ lesson: LessonRecord | null; plan: LessonPlan }> {
   const today = parisDate(now);
-  const lesson = getDailyLesson(db, today);
-  const plan = planDailyLesson(loadPlannerInput(db, today));
+  const lesson = await getDailyLesson(db, today);
+  const plan = planDailyLesson(await loadPlannerInput(db, today));
   return { lesson, plan };
 }
 
-const creating = new Map<string, Promise<LessonRecord>>();
+/** In-flight creations per database (each learner has their own). */
+const creating = new WeakMap<DB, Map<string, Promise<LessonRecord>>>();
 
 /**
  * Get today's daily lesson, creating it exactly once per Paris date.
- * Reloads, concurrent requests and restarts all return the same lesson.
+ * Reloads, concurrent requests and restarts all return the same lesson. Across server
+ * instances the unique daily key decides: a losing insert returns the winner's lesson.
  */
 export async function getOrCreateDailyLesson(db: DB, now: Date = new Date(), enhancer?: LessonEnhancer): Promise<LessonRecord> {
   const today = parisDate(now);
-  const existing = getDailyLesson(db, today);
+  const existing = await getDailyLesson(db, today);
   if (existing) return existing;
-  const inflight = creating.get(today);
+  let jobs = creating.get(db);
+  if (!jobs) creating.set(db, (jobs = new Map()));
+  const inflight = jobs.get(today);
   if (inflight) return inflight;
 
   const job = (async () => {
-    const input = loadPlannerInput(db, today);
+    const input = await loadPlannerInput(db, today);
     const plan = planDailyLesson(input);
     const id = `L${today.replace(/-/g, "")}-${shortId()}`;
     const seed = hashString(`${today}:${plan.primarySkillId}`);
     let exercises = assembleLesson({
       lessonId: id, templateId: plan.templateId, primarySkillId: plan.primarySkillId, reviewKeys: plan.reviewKeys,
-      weekNumber: plan.weekNumber, seed, recentItemKeys: recentItemKeys(db),
+      weekNumber: plan.weekNumber, seed, recentItemKeys: await recentItemKeys(db),
     });
     let intro = introFor(plan.primarySkillId, plan.templateId, plan.rationale);
     let source: "local" | "ai" | "mixed" = "local";
@@ -121,26 +126,33 @@ export async function getOrCreateDailyLesson(db: DB, now: Date = new Date(), enh
         console.warn("[lesson] AI enhancement failed, using local content:", (err as Error).message);
       }
     }
-    const again = getDailyLesson(db, today);
+    const again = await getDailyLesson(db, today);
     if (again) return again;
-    insertLesson(db, {
-      id, kind: "daily", lessonDate: today, dailyKey: today, primarySkillId: plan.primarySkillId, reviewSkillIds: plan.reviewSkillIds,
-      templateId: plan.templateId, weekNumber: plan.weekNumber, dayNumber: plan.dayNumber, title: plan.title, subtitle: plan.subtitle,
-      mode: plan.mode, source, intro, seed,
-    }, exercises);
-    return getDailyLesson(db, today)!;
+    try {
+      await insertLesson(db, {
+        id, kind: "daily", lessonDate: today, dailyKey: today, primarySkillId: plan.primarySkillId, reviewSkillIds: plan.reviewSkillIds,
+        templateId: plan.templateId, weekNumber: plan.weekNumber, dayNumber: plan.dayNumber, title: plan.title, subtitle: plan.subtitle,
+        mode: plan.mode, source, intro, seed,
+      }, exercises);
+    } catch (err) {
+      // Another server instance created today's lesson first.
+      const winner = await getDailyLesson(db, today);
+      if (winner) return winner;
+      throw err;
+    }
+    return (await getDailyLesson(db, today))!;
   })();
-  creating.set(today, job);
+  jobs.set(today, job);
   try {
     return await job;
   } finally {
-    creating.delete(today);
+    jobs.delete(today);
   }
 }
 
 export type PracticeRequest = { kind: "skill"; skillId: string } | { kind: "week"; week: number } | { kind: "review" };
 
-export function createPracticeLesson(db: DB, req: PracticeRequest, now: Date = new Date()): LessonRecord {
+export async function createPracticeLesson(db: DB, req: PracticeRequest, now: Date = new Date()): Promise<LessonRecord> {
   const today = parisDate(now);
   const id = `P${today.replace(/-/g, "")}-${shortId()}`;
   const seed = hashString(id);
@@ -166,40 +178,40 @@ export function createPracticeLesson(db: DB, req: PracticeRequest, now: Date = n
     subtitle = "Week revision";
     week = w.number;
   } else {
-    const input = loadPlannerInput(db, today);
+    const input = await loadPlannerInput(db, today);
     const plan = planDailyLesson(input);
     reviewKeys = chooseReviewKeys(input, "", 9);
-    primary = reviewKeys[0]?.startsWith("skill:") ? reviewKeys[0].slice(6) : input.dueItems[0]?.skillId ?? frontierSkill({ progress: loadProgress(db) });
+    primary = reviewKeys[0]?.startsWith("skill:") ? reviewKeys[0].slice(6) : input.dueItems[0]?.skillId ?? frontierSkill({ progress: await loadProgress(db) });
     if (!reviewKeys.length) reviewKeys = [`skill:${plan.primarySkillId}`];
     templateId = "review-mix";
     title = "Review session";
     subtitle = "Spaced repetition";
     week = getSkill(primary).week;
   }
-  const exercises = assembleLesson({ lessonId: id, templateId, primarySkillId: primary, reviewKeys, weekNumber: week, seed, recentItemKeys: recentItemKeys(db) });
+  const exercises = assembleLesson({ lessonId: id, templateId, primarySkillId: primary, reviewKeys, weekNumber: week, seed, recentItemKeys: await recentItemKeys(db) });
   const intro = introFor(primary, templateId, []);
-  insertLesson(db, {
+  await insertLesson(db, {
     id, kind: req.kind === "review" ? "review" : "practice", lessonDate: today, dailyKey: null, primarySkillId: primary,
     reviewSkillIds: [], templateId, weekNumber: week, dayNumber: 0, title, subtitle, mode: "practice", source: "local", intro, seed,
   }, exercises);
-  return getLesson(db, id)!;
+  return (await getLesson(db, id))!;
 }
 
-export function getLesson(db: DB, id: string): LessonRecord | null {
-  const row = db.select().from(schema.generatedLessons).where(eq(schema.generatedLessons.id, id)).get();
+export async function getLesson(db: DB, id: string): Promise<LessonRecord | null> {
+  const row = await db.select().from(schema.generatedLessons).where(eq(schema.generatedLessons.id, id)).get();
   return row ? toRecord(row) : null;
 }
 
-export function getLessonExercises(db: DB, lessonId: string): Exercise[] {
-  return db.select().from(schema.exercises).where(eq(schema.exercises.lessonId, lessonId)).orderBy(asc(schema.exercises.position)).all()
+export async function getLessonExercises(db: DB, lessonId: string): Promise<Exercise[]> {
+  return (await db.select().from(schema.exercises).where(eq(schema.exercises.lessonId, lessonId)).orderBy(asc(schema.exercises.position)).all())
     .map((r) => r.payload as Exercise);
 }
 
-export function latestSessionForLesson(db: DB, lessonId: string) {
-  return db.select().from(schema.lessonSessions).where(eq(schema.lessonSessions.lessonId, lessonId))
-    .orderBy(desc(schema.lessonSessions.startedAt)).get() ?? null;
+export async function latestSessionForLesson(db: DB, lessonId: string) {
+  return (await db.select().from(schema.lessonSessions).where(eq(schema.lessonSessions.lessonId, lessonId))
+    .orderBy(desc(schema.lessonSessions.startedAt)).get()) ?? null;
 }
 
-export function lessonsForDate(db: DB, date: string) {
+export async function lessonsForDate(db: DB, date: string) {
   return db.select().from(schema.generatedLessons).where(and(eq(schema.generatedLessons.lessonDate, date))).all();
 }

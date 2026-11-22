@@ -13,13 +13,13 @@ import type { z } from "zod";
 
 const hash = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 24);
 
-export function cacheGet<T>(db: DB, key: string): T | null {
-  const row = db.select().from(schema.aiCache).where(eq(schema.aiCache.key, key)).get();
+export async function cacheGet<T>(db: DB, key: string): Promise<T | null> {
+  const row = await db.select().from(schema.aiCache).where(eq(schema.aiCache.key, key)).get();
   return row ? (row.payload as T) : null;
 }
 
-export function cachePut(db: DB, key: string, kind: string, provider: string, payload: unknown) {
-  db.insert(schema.aiCache).values({ key, kind, provider, payload }).onConflictDoUpdate({ target: schema.aiCache.key, set: { payload } }).run();
+export async function cachePut(db: DB, key: string, kind: string, provider: string, payload: unknown) {
+  await db.insert(schema.aiCache).values({ key, kind, provider, payload }).onConflictDoUpdate({ target: schema.aiCache.key, set: { payload } }).run();
 }
 
 /** Ask the provider for JSON matching `schema`; one repair attempt on invalid output. */
@@ -131,18 +131,18 @@ export function mergeAiExercises(local: Exercise[], ai: Exercise[]): Exercise[] 
   return result;
 }
 
-export function createLessonEnhancer(db: DB): LessonEnhancer | undefined {
+export async function createLessonEnhancer(db: DB): Promise<LessonEnhancer | undefined> {
   const provider = getProvider();
-  const settings = db.select().from(schema.learningSettings).where(eq(schema.learningSettings.id, 1)).get();
+  const settings = await db.select().from(schema.learningSettings).where(eq(schema.learningSettings.id, 1)).get();
   if (!provider || settings?.aiEnabled === false) return undefined;
   return async ({ plan, exercises, intro, recentMistakeLabels }) => {
     const skill = getSkill(plan.primarySkillId);
     if (skill.category === "review") return null;
     const key = `lesson:${plan.primarySkillId}:${hash(exercises[0]?.id.split("-")[0] ?? "")}`;
-    let enh = cacheGet<LessonEnhancement>(db, key);
+    let enh = await cacheGet<LessonEnhancement>(db, key);
     if (!enh) {
       enh = await askJson(provider, LESSON_SYSTEM, [{ role: "user", content: lessonPrompt(plan.primarySkillId, recentMistakeLabels) }], LessonEnhancementSchema, { maxTokens: 3000, timeoutMs: 40_000 });
-      cachePut(db, key, "lesson", provider.name, enh);
+      await cachePut(db, key, "lesson", provider.name, enh);
     }
     const lessonId = exercises[0]?.id.replace(/-e\d+$/, "") ?? "lesson";
     const valid = validateEnhancement(enh, plan.primarySkillId, lessonId);
@@ -161,19 +161,19 @@ Do NOT accept answers with wrong conjugations, agreements, genders, missing nega
 Explain in 1–2 short English sentences, naming the grammar rule. Reply with ONLY JSON:
 {"isCorrect": boolean, "correctedAnswer": "best correct French version (the learner's own if correct)", "explanation": "...", "mistakeType": "none|conjugation|agreement|gender|word-order|vocabulary|spelling|tense|negation|other"}`;
 
-export function createAnswerJudge(db: DB): AnswerJudge | undefined {
+export async function createAnswerJudge(db: DB): Promise<AnswerJudge | undefined> {
   const provider = getProvider();
-  const settings = db.select().from(schema.learningSettings).where(eq(schema.learningSettings.id, 1)).get();
+  const settings = await db.select().from(schema.learningSettings).where(eq(schema.learningSettings.id, 1)).get();
   if (!provider || settings?.aiEnabled === false) return undefined;
   return async (ex, answer) => {
     const key = `judge:${hash(`${ex.prompt}|${ex.accepted.join("|")}|${normalizeAnswer(answer)}`)}`;
-    let res = cacheGet<z.infer<typeof JudgeSchema>>(db, key);
+    let res = await cacheGet<z.infer<typeof JudgeSchema>>(db, key);
     if (!res) {
       res = await askJson(provider, JUDGE_SYSTEM, [{
         role: "user",
         content: `English: ${ex.prompt}\nReference French answers: ${ex.accepted.slice(0, 6).join(" | ")}\nTopic: ${ex.rule}\nLearner's answer: ${answer}`,
       }], JudgeSchema, { maxTokens: 600, timeoutMs: 20_000 });
-      cachePut(db, key, "judge", provider.name, res);
+      await cachePut(db, key, "judge", provider.name, res);
     }
     return { isCorrect: res.isCorrect, correctedAnswer: res.correctedAnswer, explanation: res.explanation, mistakeTag: res.mistakeType === "none" ? undefined : res.mistakeType };
   };

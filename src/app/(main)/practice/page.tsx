@@ -16,14 +16,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 export const metadata: Metadata = { title: "Practice" };
 export const dynamic = "force-dynamic";
 
-export default function PracticePage() {
-  const db = getDb();
+export default async function PracticePage() {
+  const db = await getDb();
   const status = aiStatus();
-  const settings = getSettings(db);
+  const settings = await getSettings(db);
   const aiOn = status.configured && settings.aiEnabled;
-  const level = learnerLevel(db);
-  const counts = new Map(db.select({ s: schema.conversationSessions.scenarioId, n: sql<number>`count(*)` }).from(schema.conversationSessions).groupBy(schema.conversationSessions.scenarioId).all().map((r) => [r.s, Number(r.n)]));
-  const progress = loadProgress(db);
+  const level = await learnerLevel(db);
+  const counts = new Map((await db.select({ s: schema.conversationSessions.scenarioId, n: sql<number>`count(*)` }).from(schema.conversationSessions).groupBy(schema.conversationSessions.scenarioId).all()).map((r) => [r.s, Number(r.n)]));
+  const progress = await loadProgress(db);
   const weak = ORDERED_SKILLS.filter((s) => (progress[s.id]?.attempts ?? 0) > 0 && s.category !== "review").sort((a, b) => (progress[a.id]!.mastery - progress[b.id]!.mastery)).slice(0, 4);
 
   return (

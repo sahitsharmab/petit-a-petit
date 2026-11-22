@@ -172,13 +172,31 @@ function DataCard() {
     try {
       const json = JSON.parse(await file.text());
       // Validate first and show what the file contains before anything is replaced.
-      const { preview } = await api<{ preview: Record<string, number> }>("/api/import?preview=1", json);
+      const { preview, safetyCopy: mode } = await api<{ preview: Record<string, number>; safetyCopy: "server" | "download" }>("/api/import?preview=1", json);
       const what = `${preview.generatedLessons} lessons, ${preview.lessonSessions} sessions and ${preview.exerciseAttempts} answers`;
-      if (!window.confirm(`This backup contains ${what}.\n\nImporting replaces ALL current progress. A copy of your current progress is saved first in data/backups. Continue?`)) return;
+      const keep = mode === "server"
+        ? "A copy of your current progress is saved first in data/backups."
+        : "Your current progress is downloaded as a backup file first.";
+      if (!window.confirm(`This backup contains ${what}.\n\nImporting replaces ALL current progress. ${keep} Continue?`)) return;
+      let downloaded = "";
+      if (mode === "download") {
+        // Hosted: no server disk, so keep the safety copy on this device before replacing anything.
+        const res = await fetch("/api/export");
+        if (!res.ok) throw new Error("Couldn't save a copy of your current progress, so nothing was imported.");
+        const blob = await res.blob();
+        downloaded = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "petit-a-petit-backup.json";
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `pre-import-${downloaded}`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
       const res = await api<{ imported: Record<string, number>; safetyCopy?: string }>("/api/import", json);
+      const saved = res.safetyCopy ? ` Your previous progress was saved as data/backups/${res.safetyCopy}.`
+        : downloaded ? ` Your previous progress was downloaded as pre-import-${downloaded}.` : "";
       setMsg({
         tone: "ok",
-        text: `Imported ${res.imported.generatedLessons ?? 0} lessons and ${res.imported.exerciseAttempts ?? 0} answers.${res.safetyCopy ? ` Your previous progress was saved as data/backups/${res.safetyCopy}.` : ""}`,
+        text: `Imported ${res.imported.generatedLessons ?? 0} lessons and ${res.imported.exerciseAttempts ?? 0} answers.${saved}`,
       });
       router.refresh();
     } catch (e) {

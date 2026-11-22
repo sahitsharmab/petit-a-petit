@@ -11,6 +11,6 @@ const Body = z.object({
 
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
-  const s = saveProgress(getDb(), id, await parseBody(req, Body));
+  const s = await saveProgress(await getDb(), id, await parseBody(req, Body));
   return ok({ state: s.state, activeSeconds: s.activeSeconds });
 });

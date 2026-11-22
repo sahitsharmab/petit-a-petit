@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ZodError, type z } from "zod";
-import { HttpError } from "@/lib/services/sessions";
+import { HttpError } from "@/lib/http-error";
+import { AuthConfigError } from "@/lib/auth/users";
 
 export function ok<T>(data: T, init?: ResponseInit) {
   return NextResponse.json(data, init);
@@ -43,6 +44,10 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
       return await fn(...args);
     } catch (err) {
       if (err instanceof HttpError) return NextResponse.json({ error: err.message }, { status: err.status });
+      if (err instanceof AuthConfigError) {
+        console.error("[config]", err.message);
+        return NextResponse.json({ error: "The server's login settings are incomplete. Check the deployment's environment variables." }, { status: 500 });
+      }
       if (err instanceof ZodError) return NextResponse.json({ error: "Invalid request", issues: err.issues }, { status: 400 });
       console.error(err);
       return NextResponse.json({ error: "Something went wrong on the server." }, { status: 500 });

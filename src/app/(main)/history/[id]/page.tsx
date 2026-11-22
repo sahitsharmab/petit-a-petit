@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 export default async function LessonHistoryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const data = getLessonHistory(getDb(), id);
+  const data = await getLessonHistory(await getDb(), id);
   if (!data) notFound();
   const { lesson, exercises, sessions, attempts } = data;
   const done = sessions.filter((s) => s.status === "completed");

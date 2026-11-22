@@ -6,7 +6,7 @@ import { handle, ok } from "@/lib/api";
 export const dynamic = "force-dynamic";
 
 export const POST = handle(async () => {
-  const db = getDb();
-  const lesson = await getOrCreateDailyLesson(db, new Date(), createLessonEnhancer(db));
+  const db = await getDb();
+  const lesson = await getOrCreateDailyLesson(db, new Date(), await createLessonEnhancer(db));
   return ok({ lessonId: lesson.id, source: lesson.source });
 });

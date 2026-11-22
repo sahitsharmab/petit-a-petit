@@ -11,7 +11,7 @@ import { askJson } from "@/lib/ai/features";
 import { getProvider } from "@/lib/ai/provider";
 import { ConversationSummarySchema, ConversationTurnSchema, HelpSchema, type ConversationSummary } from "@/lib/ai/schemas";
 import { loadProgress } from "./progress";
-import { HttpError } from "./sessions";
+import { HttpError } from "@/lib/http-error";
 
 export interface ChatMessage {
   role: "partner" | "learner" | "note";
@@ -38,15 +38,15 @@ export interface ConversationRecord {
   studyDate: string;
 }
 
-function read(db: DB, id: string): ConversationRecord {
-  const row = db.select().from(schema.conversationSessions).where(eq(schema.conversationSessions.id, id)).get();
+async function read(db: DB, id: string): Promise<ConversationRecord> {
+  const row = await db.select().from(schema.conversationSessions).where(eq(schema.conversationSessions.id, id)).get();
   if (!row) throw new HttpError(404, "Conversation not found");
   return { ...row, mode: row.mode as ConversationRecord["mode"], status: row.status as ConversationRecord["status"], messages: row.messages as ChatMessage[], summary: row.summary as ConversationSummary | null };
 }
 
 /** Learner level, from curriculum progress, controls partner difficulty. */
-export function learnerLevel(db: DB): { cefr: string; week: number; guidance: string } {
-  const week = getSkill(frontierSkill({ progress: loadProgress(db) })).week;
+export async function learnerLevel(db: DB): Promise<{ cefr: string; week: number; guidance: string }> {
+  const week = getSkill(frontierSkill({ progress: await loadProgress(db) })).week;
   if (week <= 3) return { cefr: "A1", week, guidance: "Use very short sentences (max ~8 words), present tense only, very common words. One question at a time." };
   if (week <= 6) return { cefr: "A1+", week, guidance: "Use short sentences (max ~10 words), mostly present tense, some aller + infinitive. One question at a time." };
   if (week <= 9) return { cefr: "A2", week, guidance: "Use simple sentences (max ~14 words). Present, futur proche and passé composé are fine." };
@@ -56,20 +56,20 @@ export function learnerLevel(db: DB): { cefr: string; week: number; guidance: st
 const now = () => new Date().toISOString();
 
 /** The AI provider, but only while AI is switched on in Settings. Checked at every provider call. */
-function allowedProvider(db: DB) {
-  const settings = db.select().from(schema.learningSettings).where(eq(schema.learningSettings.id, 1)).get();
+async function allowedProvider(db: DB) {
+  const settings = await db.select().from(schema.learningSettings).where(eq(schema.learningSettings.id, 1)).get();
   return settings?.aiEnabled === false ? null : getProvider();
 }
 
-export function startConversation(db: DB, scenarioId: string, date: Date = new Date()): ConversationRecord {
+export async function startConversation(db: DB, scenarioId: string, date: Date = new Date()): Promise<ConversationRecord> {
   const sc = getScenario(scenarioId);
   if (!sc) throw new HttpError(404, "Unknown scenario");
-  const mode = allowedProvider(db) ? "ai" : "scripted";
+  const mode = (await allowedProvider(db)) ? "ai" : "scripted";
   const first = sc.nodes[sc.start];
   const messages: ChatMessage[] = [{ role: "partner", fr: first.them.fr, en: first.them.en, suggestions: first.replies.filter((r) => r.ok !== false).map((r) => ({ fr: r.fr, en: r.en })), at: now() }];
   const id = `C-${randomUUID().slice(0, 13)}`;
-  db.insert(schema.conversationSessions).values({
-    id, scenarioId, mode, status: "active", level: learnerLevel(db).cefr, messages, nodeId: sc.start, studyDate: parisDate(date),
+  await db.insert(schema.conversationSessions).values({
+    id, scenarioId, mode, status: "active", level: (await learnerLevel(db)).cefr, messages, nodeId: sc.start, studyDate: parisDate(date),
   }).run();
   return read(db, id);
 }
@@ -156,7 +156,7 @@ function scriptedTurn(sc: Scenario, nodeId: string, text: string, replyIndex?: n
   return { learner, partner, nextNode: chosen.next };
 }
 
-function aiSystem(sc: Scenario, level: ReturnType<typeof learnerLevel>) {
+function aiSystem(sc: Scenario, level: Awaited<ReturnType<typeof learnerLevel>>) {
   return `You are role-playing ${sc.partner} in France, talking with an English-speaking learner of French.
 Scenario goal for the learner: ${sc.goal}
 Address the learner with "${sc.register}". Learner level: ${level.cefr}. ${level.guidance}
@@ -181,7 +181,7 @@ function toChatHistory(messages: ChatMessage[]) {
 }
 
 export async function sendMessage(db: DB, id: string, text: string, replyIndex?: number, date: Date = new Date()): Promise<ConversationRecord> {
-  const conv = read(db, id);
+  const conv = await read(db, id);
   if (conv.status === "completed") throw new HttpError(409, "This conversation has ended.");
   const sc = getScenario(conv.scenarioId)!;
   const clean = text.trim().slice(0, 400);
@@ -191,17 +191,17 @@ export async function sendMessage(db: DB, id: string, text: string, replyIndex?:
   let status: ConversationRecord["status"] = "active";
   let mode = conv.mode;
 
-  if (mode === "ai" && !allowedProvider(db)) {
+  if (mode === "ai" && !(await allowedProvider(db))) {
     // AI was switched off (or unconfigured) after this chat started: stop sending it anything.
     mode = "scripted";
     messages.push({ role: "note", fr: "AI is turned off, so this conversation continues on the guided script. Nothing more is sent to the AI partner.", at: now() });
   }
   if (mode === "ai") {
-    const provider = allowedProvider(db);
+    const provider = await allowedProvider(db);
     try {
       if (!provider) throw new Error("AI provider not configured");
       const learner: ChatMessage = { role: "learner", fr: clean, at: now() };
-      const turn = await askJson(provider, aiSystem(sc, learnerLevel(db)), [...toChatHistory(messages), { role: "user", content: clean }], ConversationTurnSchema, { maxTokens: 900, timeoutMs: 30_000 });
+      const turn = await askJson(provider, aiSystem(sc, await learnerLevel(db)), [...toChatHistory(messages), { role: "user", content: clean }], ConversationTurnSchema, { maxTokens: 900, timeoutMs: 30_000 });
       learner.correction = turn.correction && turn.correction.corrected.trim() && turn.correction.corrected.trim() !== clean ? turn.correction : null;
       messages = [...messages, learner, { role: "partner", fr: turn.reply, en: turn.replyEnglish, suggestions: turn.suggestions, at: now() }];
       if (turn.done) status = "active"; // learner ends explicitly to get the summary
@@ -220,8 +220,8 @@ export async function sendMessage(db: DB, id: string, text: string, replyIndex?:
   }
   const last = conv.messages[conv.messages.length - 1]?.at;
   const delta = last ? Math.min(120, Math.max(5, Math.round((Date.now() - new Date(last).getTime()) / 1000))) : 20;
-  const row = db.select({ s: schema.conversationSessions.activeSeconds }).from(schema.conversationSessions).where(eq(schema.conversationSessions.id, id)).get();
-  db.update(schema.conversationSessions).set({ messages, nodeId, status, mode, activeSeconds: (row?.s ?? 0) + delta, updatedAt: now(), studyDate: parisDate(date) })
+  const row = await db.select({ s: schema.conversationSessions.activeSeconds }).from(schema.conversationSessions).where(eq(schema.conversationSessions.id, id)).get();
+  await db.update(schema.conversationSessions).set({ messages, nodeId, status, mode, activeSeconds: (row?.s ?? 0) + delta, updatedAt: now(), studyDate: parisDate(date) })
     .where(eq(schema.conversationSessions.id, id)).run();
   return read(db, id);
 }
@@ -256,11 +256,11 @@ function scriptedSummary(conv: ConversationRecord, sc: Scenario): ConversationSu
 }
 
 export async function endConversation(db: DB, id: string, date: Date = new Date()): Promise<ConversationRecord> {
-  const conv = read(db, id);
+  const conv = await read(db, id);
   if (conv.status === "completed" && conv.summary) return conv;
   const sc = getScenario(conv.scenarioId)!;
   let summary: ConversationSummary = scriptedSummary(conv, sc);
-  const provider = allowedProvider(db);
+  const provider = await allowedProvider(db);
   if (conv.mode === "ai" && provider && conv.messages.some((m) => m.role === "learner")) {
     try {
       const transcript = conv.messages.filter((m) => m.role !== "note").map((m) => `${m.role === "partner" ? "Partner" : "Learner"}: ${m.fr}`).join("\n");
@@ -277,17 +277,17 @@ export async function endConversation(db: DB, id: string, date: Date = new Date(
   // Continuity: pull recommended skills forward in the review schedule.
   const today = parisDate(date);
   for (const sid of summary.reviewSkillIds) {
-    db.update(schema.reviewSchedule).set({ dueDate: today }).where(eq(schema.reviewSchedule.itemKey, `skill:${sid}`)).run();
+    await db.update(schema.reviewSchedule).set({ dueDate: today }).where(eq(schema.reviewSchedule.itemKey, `skill:${sid}`)).run();
   }
-  db.update(schema.conversationSessions).set({ status: "completed", summary, updatedAt: now() }).where(eq(schema.conversationSessions.id, id)).run();
+  await db.update(schema.conversationSessions).set({ status: "completed", summary, updatedAt: now() }).where(eq(schema.conversationSessions.id, id)).run();
   return read(db, id);
 }
 
 export async function explainLast(db: DB, id: string): Promise<string> {
-  const conv = read(db, id);
+  const conv = await read(db, id);
   const last = [...conv.messages].reverse().find((m) => m.role === "partner");
   if (!last) throw new HttpError(400, "Nothing to explain yet.");
-  const provider = allowedProvider(db);
+  const provider = await allowedProvider(db);
   if (!provider || conv.mode !== "ai") {
     const sc = getScenario(conv.scenarioId)!;
     const vocab = sc.vocabulary.filter((v) => looseAnswer(last.fr).includes(looseAnswer(v.fr.split(" (")[0].replace(/\(.*\)/, "")).split(" / ")[0]));
@@ -298,6 +298,6 @@ export async function explainLast(db: DB, id: string): Promise<string> {
   return res.text;
 }
 
-export function getConversation(db: DB, id: string) {
+export async function getConversation(db: DB, id: string) {
   return read(db, id);
 }

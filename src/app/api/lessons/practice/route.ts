@@ -12,6 +12,6 @@ const Body = z.discriminatedUnion("kind", [
 
 export const POST = handle(async (req: Request) => {
   const body = await parseBody(req, Body);
-  const lesson = createPracticeLesson(getDb(), body);
+  const lesson = await createPracticeLesson(await getDb(), body);
   return ok({ lessonId: lesson.id });
 });

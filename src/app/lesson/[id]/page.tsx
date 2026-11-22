@@ -12,18 +12,18 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
-  const lesson = getLesson(getDb(), id);
+  const lesson = await getLesson(await getDb(), id);
   return { title: lesson?.title ?? "Lesson" };
 }
 
 export default async function LessonPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const db = getDb();
-  const lesson = getLesson(db, id);
+  const db = await getDb();
+  const lesson = await getLesson(db, id);
   if (!lesson) notFound();
-  const exercises = getLessonExercises(db, id).map(toPublic);
-  const session = getOrStartSession(db, id);
-  const settings = getSettings(db);
+  const exercises = (await getLessonExercises(db, id)).map(toPublic);
+  const session = await getOrStartSession(db, id);
+  const settings = await getSettings(db);
   const eyebrow = lesson.kind === "daily"
     ? `Week ${lesson.weekNumber} · Day ${lesson.dayNumber} — ${formatDateLong(lesson.lessonDate)}`
     : lesson.kind === "review" ? "Review session" : `Practice · Week ${lesson.weekNumber}`;

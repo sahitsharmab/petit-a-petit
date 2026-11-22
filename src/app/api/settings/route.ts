@@ -16,10 +16,10 @@ const Patch = z.object({
 }).strict();
 
 export const dynamic = "force-dynamic";
-export const GET = handle(async () => ok(getSettings(getDb())));
+export const GET = handle(async () => ok(await getSettings(await getDb())));
 export const PUT = handle(async (req: Request) => {
   const patch = await parseBody(req, Patch);
-  const db = getDb();
-  db.update(schema.learningSettings).set({ ...patch, updatedAt: new Date().toISOString() }).where(eq(schema.learningSettings.id, 1)).run();
-  return ok(getSettings(db));
+  const db = await getDb();
+  await db.update(schema.learningSettings).set({ ...patch, updatedAt: new Date().toISOString() }).where(eq(schema.learningSettings.id, 1)).run();
+  return ok(await getSettings(db));
 });

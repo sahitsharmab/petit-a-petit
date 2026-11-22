@@ -25,21 +25,21 @@ export function labelForExercise(ex: Pick<Exercise, "itemKey" | "prompt" | "tran
   return text.length > 60 ? text.slice(0, 57) + "…" : text;
 }
 
-export function loadProgress(db: DB): Record<string, SkillProgress> {
-  const rows = db.select().from(schema.skillMastery).all();
+export async function loadProgress(db: DB): Promise<Record<string, SkillProgress>> {
+  const rows = await db.select().from(schema.skillMastery).all();
   return Object.fromEntries(rows.map((r) => [r.skillId, { ...r, status: r.status as MasteryState["status"] }]));
 }
 
-function masteryRow(db: DB, skillId: string): MasteryState {
-  const r = db.select().from(schema.skillMastery).where(eq(schema.skillMastery.skillId, skillId)).get();
+async function masteryRow(db: DB, skillId: string): Promise<MasteryState> {
+  const r = await db.select().from(schema.skillMastery).where(eq(schema.skillMastery.skillId, skillId)).get();
   return r ? { ...r, status: r.status as MasteryState["status"] } : { ...EMPTY_MASTERY };
 }
 
-function saveMastery(db: DB, skillId: string, m: MasteryState, nowIso: string) {
+async function saveMastery(db: DB, skillId: string, m: MasteryState, nowIso: string) {
   const { attempts, correct, incorrect, mastery, consecutiveCorrect, lessonsAsPrimary, status } = m;
   const values = { attempts, correct, incorrect, mastery, consecutiveCorrect, lessonsAsPrimary, status };
   const passed = isPassed(m) ? nowIso : null;
-  db.insert(schema.skillMastery)
+  await db.insert(schema.skillMastery)
     .values({ skillId, ...values, firstPracticedAt: nowIso, lastPracticedAt: nowIso, passedAt: passed })
     .onConflictDoUpdate({
       target: schema.skillMastery.skillId,
@@ -53,15 +53,15 @@ function saveMastery(db: DB, skillId: string, m: MasteryState, nowIso: string) {
 }
 
 /** Apply a first-attempt result to mastery and the item's review schedule. */
-export function applyFirstAttempt(db: DB, ex: Exercise, verdict: Verdict, hintsUsed: number, today: string, nowIso: string) {
+export async function applyFirstAttempt(db: DB, ex: Exercise, verdict: Verdict, hintsUsed: number, today: string, nowIso: string) {
   const credit = creditFor(verdict, hintsUsed);
   const skills = [ex.skillId, typeof ex.meta?.parentSkill === "string" ? ex.meta.parentSkill : null].filter(Boolean) as string[];
-  for (const sid of skills) saveMastery(db, sid, updateMastery(masteryRow(db, sid), credit), nowIso);
+  for (const sid of skills) await saveMastery(db, sid, updateMastery(await masteryRow(db, sid), credit), nowIso);
 
-  const prev = db.select().from(schema.reviewSchedule).where(eq(schema.reviewSchedule.itemKey, ex.itemKey)).get();
+  const prev = await db.select().from(schema.reviewSchedule).where(eq(schema.reviewSchedule.itemKey, ex.itemKey)).get();
   const next = scheduleReview(prev ?? undefined, qualityFor(verdict, hintsUsed), today);
   const good = verdict !== "incorrect";
-  db.insert(schema.reviewSchedule)
+  await db.insert(schema.reviewSchedule)
     .values({
       itemKey: ex.itemKey, itemType: ex.itemKey.split(":")[0], skillId: ex.skillId, label: labelForExercise(ex),
       ...next, attempts: 1, correct: good ? 1 : 0,
@@ -78,25 +78,25 @@ export function applyFirstAttempt(db: DB, ex: Exercise, verdict: Verdict, hintsU
 }
 
 /** Skill-level spaced review, updated once per completed lesson. */
-export function applySkillReview(db: DB, skillId: string, accuracy: number, today: string) {
+export async function applySkillReview(db: DB, skillId: string, accuracy: number, today: string) {
   const key = `skill:${skillId}`;
-  const prev = db.select().from(schema.reviewSchedule).where(eq(schema.reviewSchedule.itemKey, key)).get();
+  const prev = await db.select().from(schema.reviewSchedule).where(eq(schema.reviewSchedule.itemKey, key)).get();
   const next = scheduleReview(prev ?? undefined, qualityFromAccuracy(accuracy), today);
-  db.insert(schema.reviewSchedule)
+  await db.insert(schema.reviewSchedule)
     .values({ itemKey: key, itemType: "skill", skillId, label: getSkill(skillId).title, ...next, attempts: 1, correct: accuracy >= 0.6 ? 1 : 0 })
     .onConflictDoUpdate({ target: schema.reviewSchedule.itemKey, set: { ...next, attempts: sql`${schema.reviewSchedule.attempts} + 1` } })
     .run();
 }
 
-export function incrementPrimary(db: DB, skillId: string, nowIso: string) {
-  const m = masteryRow(db, skillId);
-  saveMastery(db, skillId, { ...m, lessonsAsPrimary: m.lessonsAsPrimary + 1 }, nowIso);
+export async function incrementPrimary(db: DB, skillId: string, nowIso: string) {
+  const m = await masteryRow(db, skillId);
+  await saveMastery(db, skillId, { ...m, lessonsAsPrimary: m.lessonsAsPrimary + 1 }, nowIso);
 }
 
 /** Items answered wrongly in the last 14 days that haven't been answered correctly since. */
-export function loadRecentMistakes(db: DB, today: string): RecentMistake[] {
+export async function loadRecentMistakes(db: DB, today: string): Promise<RecentMistake[]> {
   const since = addDays(today, -14);
-  const rows = db.select({
+  const rows = await db.select({
     itemKey: schema.exerciseAttempts.itemKey, skillId: schema.exerciseAttempts.skillId,
     isCorrect: schema.exerciseAttempts.isCorrect, studyDate: schema.exerciseAttempts.studyDate, id: schema.exerciseAttempts.id,
   }).from(schema.exerciseAttempts)
@@ -114,30 +114,30 @@ export function loadRecentMistakes(db: DB, today: string): RecentMistake[] {
   }
   const keys = [...byKey.entries()].filter(([, v]) => v.count > 0 && !v.resolved);
   if (!keys.length) return [];
-  const labels = new Map(
-    db.select({ k: schema.reviewSchedule.itemKey, l: schema.reviewSchedule.label }).from(schema.reviewSchedule)
-      .where(inArray(schema.reviewSchedule.itemKey, keys.map(([k]) => k))).all().map((r) => [r.k, r.l]),
-  );
+  const labelRows = await db.select({ k: schema.reviewSchedule.itemKey, l: schema.reviewSchedule.label }).from(schema.reviewSchedule)
+    .where(inArray(schema.reviewSchedule.itemKey, keys.map(([k]) => k))).all();
+  const labels = new Map(labelRows.map((r) => [r.k, r.l]));
   return keys.map(([itemKey, v]) => ({ itemKey, skillId: v.skillId, count: v.count, lastDate: v.lastDate, label: labels.get(itemKey) ?? itemKey }));
 }
 
-export function loadStudyDates(db: DB): string[] {
-  const lessons = db.selectDistinct({ d: schema.lessonSessions.studyDate }).from(schema.lessonSessions)
+export async function loadStudyDates(db: DB): Promise<string[]> {
+  const lessons = await db.selectDistinct({ d: schema.lessonSessions.studyDate }).from(schema.lessonSessions)
     .where(eq(schema.lessonSessions.status, "completed")).all();
-  const convos = db.selectDistinct({ d: schema.conversationSessions.studyDate }).from(schema.conversationSessions)
+  const convos = await db.selectDistinct({ d: schema.conversationSessions.studyDate }).from(schema.conversationSessions)
     .where(eq(schema.conversationSessions.status, "completed")).all();
   return [...new Set([...lessons, ...convos].map((r) => r.d))].sort();
 }
 
 /** The active cross-item error pattern, if any (currently « nous » endings). */
-export function loadFocusPattern(db: DB, today: string, progress: Record<string, SkillProgress> = loadProgress(db)): FocusPattern | null {
+export async function loadFocusPattern(db: DB, today: string, progress?: Record<string, SkillProgress>): Promise<FocusPattern | null> {
+  progress ??= await loadProgress(db);
   const since = addDays(today, -PATTERN_WINDOW_DAYS);
-  const attempts = db.select({
+  const attempts = (await db.select({
     id: schema.exerciseAttempts.id, itemKey: schema.exerciseAttempts.itemKey, verdict: schema.exerciseAttempts.verdict,
     hintsUsed: schema.exerciseAttempts.hintsUsed, studyDate: schema.exerciseAttempts.studyDate, isFirst: schema.exerciseAttempts.isFirst,
   }).from(schema.exerciseAttempts)
     .where(and(eq(schema.exerciseAttempts.isFirst, true), gte(schema.exerciseAttempts.studyDate, since), like(schema.exerciseAttempts.itemKey, "%:nous%")))
-    .all().map((a) => ({ ...a, verdict: a.verdict as Verdict }));
+    .all()).map((a) => ({ ...a, verdict: a.verdict as Verdict }));
   // Fresh-verb candidates: verbs from conjugation topics the learner has already practised.
   const verbsByTense: Record<string, string[]> = {};
   for (const s of SKILLS) {
@@ -153,30 +153,30 @@ function getVerbSafe(v: string) {
   try { return getVerb(v); } catch { return null; }
 }
 
-export function loadPlannerInput(db: DB, today: string): PlannerInput {
-  const dueItems = db.select().from(schema.reviewSchedule).where(lte(schema.reviewSchedule.dueDate, today)).all()
+export async function loadPlannerInput(db: DB, today: string): Promise<PlannerInput> {
+  const dueItems = (await db.select().from(schema.reviewSchedule).where(lte(schema.reviewSchedule.dueDate, today)).all())
     .map((r) => ({ itemKey: r.itemKey, skillId: r.skillId, label: r.label, dueDate: r.dueDate, ease: r.ease, lapses: r.lapses }))
     .filter((r) => SKILLS.some((s) => s.id === r.skillId));
-  const before = loadStudyDates(db).filter((d) => d < today);
-  const daily = db.select({ week: schema.generatedLessons.weekNumber, n: sql<number>`count(*)` }).from(schema.generatedLessons)
+  const before = (await loadStudyDates(db)).filter((d) => d < today);
+  const daily = await db.select({ week: schema.generatedLessons.weekNumber, n: sql<number>`count(*)` }).from(schema.generatedLessons)
     .where(and(eq(schema.generatedLessons.kind, "daily"), sql`${schema.generatedLessons.lessonDate} < ${today}`))
     .groupBy(schema.generatedLessons.weekNumber).all();
-  const progress = loadProgress(db);
+  const progress = await loadProgress(db);
   return {
     today,
     progress,
-    focus: loadFocusPattern(db, today, progress),
+    focus: await loadFocusPattern(db, today, progress),
     dueItems,
-    recentMistakes: loadRecentMistakes(db, today),
+    recentMistakes: await loadRecentMistakes(db, today),
     lastStudyDate: before[before.length - 1] ?? null,
     dailyLessonsByWeek: Object.fromEntries(daily.map((d) => [d.week, Number(d.n)])),
   };
 }
 
 /** Item keys from the most recent lessons, to avoid exact repeats. */
-export function recentItemKeys(db: DB, lessons = 4): string[] {
-  const ids = db.select({ id: schema.generatedLessons.id }).from(schema.generatedLessons)
-    .orderBy(desc(schema.generatedLessons.createdAt)).limit(lessons).all().map((r) => r.id);
+export async function recentItemKeys(db: DB, lessons = 4): Promise<string[]> {
+  const ids = (await db.select({ id: schema.generatedLessons.id }).from(schema.generatedLessons)
+    .orderBy(desc(schema.generatedLessons.createdAt)).limit(lessons).all()).map((r) => r.id);
   if (!ids.length) return [];
-  return db.select({ k: schema.exercises.itemKey }).from(schema.exercises).where(inArray(schema.exercises.lessonId, ids)).all().map((r) => r.k);
+  return (await db.select({ k: schema.exercises.itemKey }).from(schema.exercises).where(inArray(schema.exercises.lessonId, ids)).all()).map((r) => r.k);
 }

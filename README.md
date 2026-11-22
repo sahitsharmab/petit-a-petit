@@ -22,10 +22,11 @@ honest scoring, and everything stored on your own machine. It works fully offlin
 
 | | |
 |---|---|
-| **Stack** | Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · SQLite (better-sqlite3 + Drizzle ORM) · Zod |
+| **Stack** | Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · SQLite / Turso (libSQL + Drizzle ORM) · Zod |
+| **Hosting** | Local (single learner) or Vercel + Turso with logins and one database per learner |
 | **AI (optional)** | Anthropic Claude or a local Ollama model, schema-validated with automatic local fallback |
 | **Voice** | Browser Web Speech API (no key, no cloud service of ours) |
-| **Quality** | 121 Vitest unit/integration tests · Playwright end-to-end test · ESLint · strict TypeScript |
+| **Quality** | 130 Vitest unit/integration tests · Playwright end-to-end test · ESLint · strict TypeScript |
 
 ## Quick start
 
@@ -43,6 +44,59 @@ automatically at `data/french.db` on first launch (migrations + curriculum seed 
 Both commands listen on `127.0.0.1` only, so the app (and its import/reset endpoints) is not
 reachable from other devices on your network. Importing a backup saves a copy of your current
 progress in `data/backups/` first.
+
+## Host it for two people (free: Vercel + Turso)
+
+Run locally, the app has one learner and no login. Hosted, it has **logins** and **one
+database per learner**: each person gets their own streak, lessons, mistakes, settings and
+backups. Hosting uses two free plans: [Vercel](https://vercel.com) (the app) and
+[Turso](https://turso.tech) (hosted SQLite, one database per person). Free plan limits change,
+so check the current terms when you sign up.
+
+**1. Two Turso databases** (web dashboard, no CLI needed)
+1. Sign up at turso.tech and create a database for each person, e.g. `petit-sahit` and
+   `petit-partner`. Pick the location closest to you (for France: a Western Europe region).
+2. For each database, copy its **URL** (`libsql://…turso.io`) and create a **token**
+   (read & write, no expiry or a long one).
+
+**2. Passwords and a session secret** (on your computer, in this folder)
+```bash
+npm run hash-password   # once per person; also prints a random SESSION_SECRET
+```
+The password is typed into the terminal (not saved in shell history). Copy the
+`scrypt:…` line it prints. Never put the plain password anywhere.
+
+**3. Deploy on Vercel**
+1. Sign up at vercel.com with GitHub and **Import** this repository. The framework is detected
+   as Next.js; keep the default build settings.
+2. Before the first deploy, add these **Environment Variables** (Production):
+
+   | Name | Value |
+   |---|---|
+   | `APP_USERS` | `sahit,partner` (lower-case ids, comma-separated) |
+   | `SESSION_SECRET` | the random secret from step 2 |
+   | `USER_SAHIT_PASSWORD_HASH` | `scrypt:…` from step 2 |
+   | `USER_SAHIT_DB_URL` / `USER_SAHIT_DB_TOKEN` | Turso URL and token |
+   | `USER_SAHIT_NAME` (optional) | display name, also accepted at login |
+   | …the same four for `PARTNER` | |
+
+3. In **Settings → Functions**, set the function region next to your Turso region (e.g. a
+   Western Europe region for both), so each database call is a short hop.
+4. Deploy, open the URL, and sign in. Each database is created (migrated and seeded) on first use.
+
+**Moving existing progress:** on the local app, Settings → Export progress; then on the
+hosted app, sign in as that person and use Settings → Import. Hosted imports download a copy of
+the current hosted progress to your device first, because there's no server disk.
+
+**Good to know**
+- The hosted app refuses to start without `APP_USERS` and `SESSION_SECRET`, so it can't be
+  accidentally deployed without logins.
+- Changing someone's password hash signs out their existing sessions. Sessions last 30 days.
+- Failed logins are rate-limited (8 per 15 minutes per client and server instance).
+- AI stays off unless you add `AI_PROVIDER` and a key, which is shared by everyone signed in.
+- Reminders work while a tab of the site is open, as before.
+- Local logins (for testing) work too: set `APP_USERS` and the hashes in `.env.local`, and each
+  person's data goes to `data/<id>.db`.
 
 ## What's inside
 
@@ -150,5 +204,6 @@ src/lib/content/         curriculum, sentence bank, frames, scenarios, exercise 
 src/lib/learning/        dates (Europe/Paris), mastery, SRS, streaks, planner, lesson assembly
 src/lib/services/        DB-backed services: lessons, sessions, progress, stats, conversations, backup
 src/lib/ai/              provider adapter (Anthropic / Ollama), Zod schemas, enrichment, judging
-src/lib/db/              Drizzle schema, client, seed sync;  drizzle/ = SQL migrations
+src/lib/db/              Drizzle schema, libSQL client (file or Turso), seed sync;  drizzle/ = SQL migrations
+src/lib/auth/            users from env, scrypt passwords, signed session cookies;  src/proxy.ts = login gate
 ```

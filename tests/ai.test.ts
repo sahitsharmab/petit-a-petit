@@ -35,11 +35,11 @@ const validEnhancement: LessonEnhancement = {
 afterEach(() => { vi.unstubAllEnvs(); });
 
 describe("AI provider configuration", () => {
-  it("is offline by default and reports why", () => {
+  it("is offline by default and reports why", async () => {
     vi.stubEnv("AI_PROVIDER", "");
     expect(aiStatus().configured).toBe(false);
   });
-  it("requires an API key for Anthropic", () => {
+  it("requires an API key for Anthropic", async () => {
     vi.stubEnv("AI_PROVIDER", "anthropic");
     vi.stubEnv("ANTHROPIC_API_KEY", "");
     expect(aiStatus()).toMatchObject({ provider: "anthropic", configured: false });
@@ -49,7 +49,7 @@ describe("AI provider configuration", () => {
 });
 
 describe("AI output validation", () => {
-  it("extracts JSON from fenced or chatty replies", () => {
+  it("extracts JSON from fenced or chatty replies", async () => {
     expect(extractJson('Sure!\n```json\n{"a":1}\n```')).toEqual({ a: 1 });
     expect(() => extractJson("no json here")).toThrow();
   });
@@ -66,11 +66,11 @@ describe("AI output validation", () => {
   it("throws after repeated invalid output", async () => {
     await expect(askJson(fake("garbage"), "s", [{ role: "user", content: "q" }], JudgeSchema)).rejects.toThrow(/validation/);
   });
-  it("rejects content for the wrong topic or level", () => {
+  it("rejects content for the wrong topic or level", async () => {
     expect(() => validateEnhancement({ ...validEnhancement, skillId: "w8-pc-avoir" }, "w1-er-present", "L")).toThrow(/expected/);
     expect(() => validateEnhancement({ ...validEnhancement, cefr: "B1" }, "w1-er-present", "L")).toThrow(/level/);
   });
-  it("drops internally inconsistent exercises", () => {
+  it("drops internally inconsistent exercises", async () => {
     const e = LessonEnhancementSchema.parse({
       ...validEnhancement,
       exercises: [
@@ -83,7 +83,7 @@ describe("AI output validation", () => {
     expect(v.exercises.map((x) => x.type)).toEqual(["translation"]);
     expect(v.exercises[0].source).toBe("ai");
   });
-  it("merges AI exercises while keeping the local spine", () => {
+  it("merges AI exercises while keeping the local spine", async () => {
     const local = assembleLesson({ lessonId: "L", templateId: "daily-standard", primarySkillId: "w1-er-present", reviewKeys: [], weekNumber: 1, seed: 7 });
     const ai = validateEnhancement(validEnhancement, "w1-er-present", "L").exercises;
     const merged = mergeAiExercises(local, ai);
@@ -95,13 +95,13 @@ describe("AI output validation", () => {
 
 describe("AI fallback", () => {
   it("falls back to local content when the enhancer fails", async () => {
-    const db = createDb(":memory:");
+    const db = (await createDb(":memory:"));
     const lesson = await getOrCreateDailyLesson(db, new Date("2026-11-21T19:00:00Z"), async () => { throw new Error("network down"); });
     expect(lesson.source).toBe("local");
-    expect(getLessonExercises(db, lesson.id).length).toBeGreaterThan(5);
+    expect((await getLessonExercises(db, lesson.id)).length).toBeGreaterThan(5);
   });
   it("persists AI-enhanced lessons once (no regeneration on reload)", async () => {
-    const db = createDb(":memory:");
+    const db = (await createDb(":memory:"));
     let calls = 0;
     const enhancer = async ({ exercises, intro }: { exercises: never[]; intro: never }) => { calls++; return { exercises, intro, source: "mixed" as const }; };
     const a = await getOrCreateDailyLesson(db, new Date("2026-11-21T19:00:00Z"), enhancer as never);
@@ -111,11 +111,11 @@ describe("AI fallback", () => {
     expect(a.source).toBe("mixed");
   });
   it("keeps the local verdict when the AI judge fails, and uses it when it works", async () => {
-    const db = createDb(":memory:");
+    const db = (await createDb(":memory:"));
     const lesson = await getOrCreateDailyLesson(db, new Date("2026-11-21T19:00:00Z"));
-    const all = getLessonExercises(db, lesson.id);
+    const all = (await getLessonExercises(db, lesson.id));
     const ex = all.find((e) => e.allowAiJudge)!;
-    const s = getOrStartSession(db, lesson.id);
+    const s = (await getOrStartSession(db, lesson.id));
     await answerUntil(db, s.id, all, ex.id);
     const failing = await submitAttempt(db, s.id, ex.id, "phrase alternative", 0, new Date(), async () => { throw new Error("timeout"); });
     expect(failing.feedback.verdict).toBe("incorrect");
@@ -123,6 +123,6 @@ describe("AI fallback", () => {
     const ok = await submitAttempt(db, s.id, ex.id, "une autre traduction correcte", 0, new Date(), async () => ({ isCorrect: true, correctedAnswer: "", explanation: "Also correct." }));
     expect(ok.feedback.verdict).toBe("correct");
     expect(ok.feedback.judgedBy).toBe("ai");
-    expect(db.select().from(schema.exerciseAttempts).all().at(-1)!.judgedBy).toBe("ai");
+    expect((await db.select().from(schema.exerciseAttempts).all()).at(-1)!.judgedBy).toBe("ai");
   });
 });

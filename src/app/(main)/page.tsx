@@ -13,8 +13,8 @@ import { pct } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default function TodayPage() {
-  const d = getDashboard(getDb());
+export default async function TodayPage() {
+  const d = await getDashboard(await getDb());
   const hour = parisParts().hour;
   const hello = hour >= 18 || hour < 4 ? "Bonsoir" : "Bonjour";
   const { card, plan } = { card: d.card, plan: d.card.plan };

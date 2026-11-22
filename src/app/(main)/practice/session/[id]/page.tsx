@@ -10,17 +10,17 @@ export const dynamic = "force-dynamic";
 
 export default async function ConversationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const db = getDb();
+  const db = await getDb();
   let conv;
   try {
-    conv = getConversation(db, id);
+    conv = await getConversation(db, id);
   } catch (e) {
     if (e instanceof HttpError) notFound();
     throw e;
   }
   const sc = getScenario(conv.scenarioId);
   if (!sc) notFound();
-  const s = getSettings(db);
+  const s = await getSettings(db);
   return (
     <Chat initial={conv} initialFinished={isScriptFinished(conv)}
       scenario={{ title: sc.title, goal: sc.goal, partner: sc.partner, vocabulary: sc.vocabulary }}

@@ -5,6 +5,6 @@ import { handle, ok, parseBody } from "@/lib/api";
 
 export const POST = handle(async (req: Request) => {
   await parseBody(req, z.object({ confirm: z.literal("RESET") }));
-  resetProgress(getDb());
+  await resetProgress(await getDb());
   return ok({ reset: true });
 });

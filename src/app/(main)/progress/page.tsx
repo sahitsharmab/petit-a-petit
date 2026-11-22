@@ -12,8 +12,8 @@ import { cn, pct } from "@/lib/utils";
 export const metadata: Metadata = { title: "Progress" };
 export const dynamic = "force-dynamic";
 
-export default function ProgressPage() {
-  const d = getProgressData(getDb());
+export default async function ProgressPage() {
+  const d = await getProgressData(await getDb());
   const tiles = [
     { icon: Flame, label: "Current streak", value: `${d.streak.current}`, sub: `best ${d.streak.best}` },
     { icon: Clock, label: "Minutes studied", value: `${d.totals.minutes}`, sub: `${d.totals.studyDays} study days` },

@@ -1,7 +1,14 @@
-/** Apply migrations and sync curriculum seed data. Usage: npm run db:migrate */
-import path from "node:path";
+/**
+ * Apply migrations and sync curriculum seed data.
+ *   npm run db:migrate                      → every configured learner's database (or data/french.db locally)
+ */
 import { createDb } from "../src/lib/db";
+import { loadUsers } from "../src/lib/auth/users";
 
-const file = process.env.FRANCAIS_DB_PATH ?? path.join(process.cwd(), "data", "french.db");
-createDb(file);
-console.log(`✓ Database ready: ${file}`);
+async function main() {
+  for (const u of loadUsers()) {
+    await createDb(u.dbUrl, u.dbToken);
+    console.log(`✓ Database ready for ${u.id}: ${u.dbUrl.replace(/\?.*$/, "")}`);
+  }
+}
+main().catch((e) => { console.error(e); process.exit(1); });

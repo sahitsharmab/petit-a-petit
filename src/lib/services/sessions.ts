@@ -6,6 +6,7 @@ import { getSkill } from "@/lib/content/curriculum";
 import type { Exercise } from "@/lib/content/types";
 import { evaluateAnswer, type Mark, type Verdict } from "@/lib/french/evaluate";
 import { parisDate } from "@/lib/learning/dates";
+import { HttpError } from "@/lib/http-error";
 import { applyFirstAttempt, applySkillReview, incrementPrimary, loadProgress } from "./progress";
 import { getLesson, getLessonExercises, latestSessionForLesson } from "./lessons";
 
@@ -78,24 +79,22 @@ export interface SessionSummary {
 
 export type AnswerJudge = (ex: Exercise, answer: string) => Promise<{ isCorrect: boolean; correctedAnswer: string; explanation: string; mistakeTag?: string } | null>;
 
-function readSession(db: DB, id: string) {
-  const row = db.select().from(schema.lessonSessions).where(eq(schema.lessonSessions.id, id)).get();
+async function readSession(db: DB, id: string) {
+  const row = await db.select().from(schema.lessonSessions).where(eq(schema.lessonSessions.id, id)).get();
   if (!row) throw new HttpError(404, "Session not found");
   return { ...row, state: row.state as PlayerState };
 }
 
-export class HttpError extends Error {
-  constructor(public status: number, message: string) { super(message); }
-}
+export { HttpError };
 
 /** Resume the latest session for a lesson, or start one. */
-export function getOrStartSession(db: DB, lessonId: string, now: Date = new Date()) {
-  const lesson = getLesson(db, lessonId);
+export async function getOrStartSession(db: DB, lessonId: string, now: Date = new Date()) {
+  const lesson = await getLesson(db, lessonId);
   if (!lesson) throw new HttpError(404, "Lesson not found");
-  const existing = latestSessionForLesson(db, lessonId);
+  const existing = await latestSessionForLesson(db, lessonId);
   if (existing) return { ...existing, state: existing.state as PlayerState };
-  const exercises = getLessonExercises(db, lessonId);
-  const progress = loadProgress(db);
+  const exercises = await getLessonExercises(db, lessonId);
+  const progress = await loadProgress(db);
   const state: PlayerState = {
     phase: lesson.intro.showExplanation || lesson.intro.rationale.length ? "intro" : "exercise",
     queue: exercises.map((e) => e.id),
@@ -105,26 +104,26 @@ export function getOrStartSession(db: DB, lessonId: string, now: Date = new Date
     masteryBefore: progress[lesson.primarySkillId]?.mastery ?? 0,
   };
   const id = `S-${randomUUID().slice(0, 13)}`;
-  db.insert(schema.lessonSessions).values({ id, lessonId, status: "in_progress", state, studyDate: parisDate(now) }).run();
+  await db.insert(schema.lessonSessions).values({ id, lessonId, status: "in_progress", state, studyDate: parisDate(now) }).run();
   return readSession(db, id);
 }
 
 /** Start a fresh attempt at a lesson that was already completed. */
-export function restartSession(db: DB, lessonId: string, now: Date = new Date()) {
-  const exercises = getLessonExercises(db, lessonId);
+export async function restartSession(db: DB, lessonId: string, now: Date = new Date()) {
+  const exercises = await getLessonExercises(db, lessonId);
   if (!exercises.length) throw new HttpError(404, "Lesson not found");
-  const lesson = getLesson(db, lessonId)!;
+  const lesson = (await getLesson(db, lessonId))!;
   const state: PlayerState = {
     phase: "exercise", queue: exercises.map((e) => e.id), index: 0, results: {}, retryFrom: null,
-    masteryBefore: loadProgress(db)[lesson.primarySkillId]?.mastery ?? 0,
+    masteryBefore: (await loadProgress(db))[lesson.primarySkillId]?.mastery ?? 0,
   };
   const id = `S-${randomUUID().slice(0, 13)}`;
-  db.insert(schema.lessonSessions).values({ id, lessonId, status: "in_progress", state, studyDate: parisDate(now) }).run();
+  await db.insert(schema.lessonSessions).values({ id, lessonId, status: "in_progress", state, studyDate: parisDate(now) }).run();
   return readSession(db, id);
 }
 
-function writeState(db: DB, id: string, state: PlayerState, extra: Partial<typeof schema.lessonSessions.$inferInsert> = {}) {
-  db.update(schema.lessonSessions).set({ state, updatedAt: new Date().toISOString(), ...extra }).where(eq(schema.lessonSessions.id, id)).run();
+async function writeState(db: DB, id: string, state: PlayerState, extra: Partial<typeof schema.lessonSessions.$inferInsert> = {}) {
+  await db.update(schema.lessonSessions).set({ state, updatedAt: new Date().toISOString(), ...extra }).where(eq(schema.lessonSessions.id, id)).run();
 }
 
 /** Result key for a queue position (retry-round positions get a "#retry" suffix). */
@@ -142,15 +141,15 @@ function firstUnfinished(state: PlayerState): number {
 const MAX_ACTIVE_DELTA = 120;
 
 /** Persist navigation (phase / index) and active study time. */
-export function saveProgress(db: DB, sessionId: string, patch: { phase?: PlayerState["phase"]; index?: number; activeSecondsDelta?: number }) {
-  const s = readSession(db, sessionId);
+export async function saveProgress(db: DB, sessionId: string, patch: { phase?: PlayerState["phase"]; index?: number; activeSecondsDelta?: number }) {
+  const s = await readSession(db, sessionId);
   if (s.status === "completed") return s;
   const state = { ...s.state };
   if (patch.phase && patch.phase !== "summary") state.phase = patch.phase;
   // Navigation may revisit answered exercises but never jump past an unanswered one.
   if (typeof patch.index === "number" && patch.index >= 0 && patch.index <= firstUnfinished(state)) state.index = patch.index;
   const delta = Math.max(0, Math.min(MAX_ACTIVE_DELTA, Math.round(patch.activeSecondsDelta ?? 0)));
-  writeState(db, sessionId, state, { activeSeconds: s.activeSeconds + delta });
+  await writeState(db, sessionId, state, { activeSeconds: s.activeSeconds + delta });
   return readSession(db, sessionId);
 }
 
@@ -177,9 +176,9 @@ export async function submitAttempt(
   db: DB, sessionId: string, exerciseId: string, rawAnswer: string, hintsUsed: number, now: Date = new Date(), judge?: AnswerJudge,
   attemptNo?: number, assist: { transcriptShown?: boolean } = {},
 ): Promise<{ feedback: Feedback; state: PlayerState }> {
-  const s = readSession(db, sessionId);
+  const s = await readSession(db, sessionId);
   if (s.status === "completed" || s.state.phase === "summary") throw new HttpError(409, "This lesson is already completed.");
-  const row = db.select().from(schema.exercises).where(and(eq(schema.exercises.id, exerciseId), eq(schema.exercises.lessonId, s.lessonId))).get();
+  const row = await db.select().from(schema.exercises).where(and(eq(schema.exercises.id, exerciseId), eq(schema.exercises.lessonId, s.lessonId))).get();
   if (!row) throw new HttpError(404, "Exercise not in this lesson");
   const ex = row.payload as Exercise;
   const answer = String(rawAnswer ?? "").slice(0, 500);
@@ -253,20 +252,20 @@ export async function submitAttempt(
   const transcriptShown = ex.type === "listening" && (!!assist.transcriptShown || !!prev.transcriptShown);
   const assistedHints = hintsUsed + (transcriptShown ? 1 : 0);
 
-  const recorded = db.transaction((tx) => {
+  const recorded = await db.transaction(async (tx) => {
     const t = tx as unknown as DB;
     // The AI judge is awaited above, so re-check that no other request changed this exercise meanwhile.
-    const cur = readSession(t, sessionId);
+    const cur = await readSession(t, sessionId);
     const curPrev = cur.state.results[resultKey];
     if (cur.status === "completed" || cur.state.index !== state.index || (curPrev?.attempts ?? 0) !== prev.attempts) return false;
     const fresh = cur.state;
-    t.insert(schema.exerciseAttempts).values({
+    await t.insert(schema.exerciseAttempts).values({
       sessionId, exerciseId, skillId: ex.skillId, itemKey: ex.itemKey, exerciseType: ex.type, answer: isChoice ? (ex.options?.[Number(answer)] ?? answer) : answer,
       expected: feedback.correctAnswer, verdict: feedback.verdict, isCorrect: feedback.verdict !== "incorrect", isFirst,
       mistakeTag: feedback.verdict === "incorrect" ? feedback.mistakeTag ?? null : feedback.verdict === "almost" ? feedback.mistakeTag ?? null : null,
       note: feedback.note ?? null, hintsUsed: assistedHints, judgedBy: feedback.judgedBy, studyDate: today,
     }).run();
-    if (isFirst) applyFirstAttempt(t, ex, feedback.verdict, assistedHints, today, now.toISOString());
+    if (isFirst) await applyFirstAttempt(t, ex, feedback.verdict, assistedHints, today, now.toISOString());
 
     const result: ExerciseResult = {
       attempts, hintsUsed: Math.max(prev.hintsUsed, hintsUsed),
@@ -275,10 +274,10 @@ export async function submitAttempt(
     };
     fresh.results[resultKey] = result;
     fresh.phase = "exercise";
-    writeState(t, sessionId, fresh);
+    await writeState(t, sessionId, fresh);
     return true;
-  });
-  const latest = readSession(db, sessionId).state;
+  }); // libSQL transactions take the write lock up front (BEGIN IMMEDIATE).
+  const latest = (await readSession(db, sessionId)).state;
   if (!recorded) {
     const saved = latest.results[resultKey]?.feedback;
     if (saved) return { feedback: saved, state: latest };
@@ -292,8 +291,8 @@ export async function submitAttempt(
  * `fromIndex` is the position the caller is leaving: a repeated request for a position the
  * session has already left is a no-op, so double clicks or retried requests never skip a question.
  */
-export function advance(db: DB, sessionId: string, fromIndex?: number) {
-  const s = readSession(db, sessionId);
+export async function advance(db: DB, sessionId: string, fromIndex?: number) {
+  const s = await readSession(db, sessionId);
   const state = s.state;
   if (s.status === "completed" || state.phase === "summary") return state;
   if (fromIndex !== undefined && fromIndex !== state.index) return state;
@@ -309,7 +308,7 @@ export function advance(db: DB, sessionId: string, fromIndex?: number) {
     }
   }
   state.index = Math.min(next, state.queue.length);
-  writeState(db, sessionId, state);
+  await writeState(db, sessionId, state);
   return state;
 }
 
@@ -348,25 +347,25 @@ function nextStepText(b: Record<Outcome, number>, primaryPassed: boolean): strin
  * Every queued exercise (including the retry round) must be answered first, and the skill
  * updates, primary-lesson credit and the completed status are written in one transaction.
  */
-export function completeSession(db: DB, sessionId: string, now: Date = new Date()): SessionSummary {
+export async function completeSession(db: DB, sessionId: string, now: Date = new Date()): Promise<SessionSummary> {
   return db.transaction((tx) => completeInTx(tx as unknown as DB, sessionId, now));
 }
 
-function completeInTx(db: DB, sessionId: string, now: Date): SessionSummary {
-  const s = readSession(db, sessionId);
+async function completeInTx(db: DB, sessionId: string, now: Date): Promise<SessionSummary> {
+  const s = await readSession(db, sessionId);
   if (s.status === "completed" && s.summary) return s.summary as SessionSummary;
   const state = s.state;
   if (state.index < state.queue.length || firstUnfinished(state) < state.queue.length) {
     throw new HttpError(409, "Finish every exercise before completing the lesson.");
   }
-  const lesson = getLesson(db, s.lessonId)!;
-  const exercises = getLessonExercises(db, s.lessonId);
+  const lesson = (await getLesson(db, s.lessonId))!;
+  const exercises = await getLessonExercises(db, s.lessonId);
   const today = parisDate(now);
   const scored = exercises.filter((e) => state.results[e.id]?.firstVerdict);
 
   // The learner's actual first answer (and its hints) for each exercise, from the attempt log.
   const firstRows = new Map<string, { answer: string; hintsUsed: number }>();
-  for (const a of db.select().from(schema.exerciseAttempts).where(eq(schema.exerciseAttempts.sessionId, sessionId)).orderBy(asc(schema.exerciseAttempts.id)).all()) {
+  for (const a of await db.select().from(schema.exerciseAttempts).where(eq(schema.exerciseAttempts.sessionId, sessionId)).orderBy(asc(schema.exerciseAttempts.id)).all()) {
     if (!firstRows.has(a.exerciseId)) firstRows.set(a.exerciseId, { answer: a.answer, hintsUsed: a.hintsUsed });
   }
   const outcome = (e: Exercise): Outcome => outcomeOf(state.results[e.id], state.results[`${e.id}#retry`], firstRows.get(e.id)?.hintsUsed);
@@ -384,10 +383,10 @@ function completeInTx(db: DB, sessionId: string, now: Date): SessionSummary {
     bySkill.set(e.skillId, cur);
   }
 
-  for (const [sid, v] of bySkill) applySkillReview(db, sid, v.credit / v.total, today);
-  if (lesson.kind === "daily" || lesson.kind === "practice") incrementPrimary(db, lesson.primarySkillId, now.toISOString());
+  for (const [sid, v] of bySkill) await applySkillReview(db, sid, v.credit / v.total, today);
+  if (lesson.kind === "daily" || lesson.kind === "practice") await incrementPrimary(db, lesson.primarySkillId, now.toISOString());
 
-  const after = loadProgress(db)[lesson.primarySkillId];
+  const after = (await loadProgress(db))[lesson.primarySkillId];
   const shown = (e: Exercise, value: string | undefined) => e.options && value !== undefined && /^\d+$/.test(value) ? e.options[Number(value)] ?? value : value ?? "";
   const mistakes: SessionSummary["mistakes"] = scored.flatMap((e) => {
     const kind = outcomes.get(e.id)!;
@@ -417,10 +416,10 @@ function completeInTx(db: DB, sessionId: string, now: Date): SessionSummary {
   };
   state.phase = "summary";
   // The lesson keeps its assigned date; the study (streak, activity) counts on the Paris day it was completed.
-  writeState(db, sessionId, state, { status: "completed", completedAt: now.toISOString(), score: accuracy, summary, studyDate: today });
+  await writeState(db, sessionId, state, { status: "completed", completedAt: now.toISOString(), score: accuracy, summary, studyDate: today });
   return summary;
 }
 
-export function getSession(db: DB, id: string) {
+export async function getSession(db: DB, id: string) {
   return readSession(db, id);
 }
