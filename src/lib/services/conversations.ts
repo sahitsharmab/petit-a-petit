@@ -1,0 +1,243 @@
+import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
+import type { DB } from "@/lib/db";
+import { schema } from "@/lib/db";
+import { SKILL_BY_ID, getSkill } from "@/lib/content/curriculum";
+import { getScenario, type Scenario, type ScriptReply } from "@/lib/content/scenarios";
+import { looseAnswer, tokenize } from "@/lib/french/normalize";
+import { parisDate } from "@/lib/learning/dates";
+import { frontierSkill } from "@/lib/learning/planner";
+import { askJson } from "@/lib/ai/features";
+import { getProvider } from "@/lib/ai/provider";
+import { ConversationSummarySchema, ConversationTurnSchema, HelpSchema, type ConversationSummary } from "@/lib/ai/schemas";
+import { loadProgress } from "./progress";
+import { HttpError } from "./sessions";
+
+export interface ChatMessage {
+  role: "partner" | "learner" | "note";
+  fr: string;
+  en?: string;
+  correction?: { original: string; corrected: string; explanation: string } | null;
+  /** Model phrasing for a learner message (scripted mode). */
+  model?: string;
+  suggestions?: { fr: string; en: string }[];
+  at: string;
+}
+
+export interface ConversationRecord {
+  id: string;
+  scenarioId: string;
+  mode: "ai" | "scripted";
+  status: "active" | "completed";
+  level: string;
+  messages: ChatMessage[];
+  nodeId: string | null;
+  summary: ConversationSummary | null;
+  studyDate: string;
+}
+
+function read(db: DB, id: string): ConversationRecord {
+  const row = db.select().from(schema.conversationSessions).where(eq(schema.conversationSessions.id, id)).get();
+  if (!row) throw new HttpError(404, "Conversation not found");
+  return { ...row, mode: row.mode as ConversationRecord["mode"], status: row.status as ConversationRecord["status"], messages: row.messages as ChatMessage[], summary: row.summary as ConversationSummary | null };
+}
+
+/** Learner level, from curriculum progress, controls partner difficulty. */
+export function learnerLevel(db: DB): { cefr: string; week: number; guidance: string } {
+  const week = getSkill(frontierSkill({ progress: loadProgress(db) })).week;
+  if (week <= 3) return { cefr: "A1", week, guidance: "Use very short sentences (max ~8 words), present tense only, very common words. One question at a time." };
+  if (week <= 6) return { cefr: "A1+", week, guidance: "Use short sentences (max ~10 words), mostly present tense, some aller + infinitive. One question at a time." };
+  if (week <= 9) return { cefr: "A2", week, guidance: "Use simple sentences (max ~14 words). Present, futur proche and passé composé are fine." };
+  return { cefr: "A2+", week, guidance: "Natural but clear everyday French, up to ~16 words. Mix tenses naturally; occasionally use object pronouns." };
+}
+
+const now = () => new Date().toISOString();
+
+export function startConversation(db: DB, scenarioId: string, date: Date = new Date()): ConversationRecord {
+  const sc = getScenario(scenarioId);
+  if (!sc) throw new HttpError(404, "Unknown scenario");
+  const settings = db.select().from(schema.learningSettings).where(eq(schema.learningSettings.id, 1)).get();
+  const mode = getProvider() && settings?.aiEnabled !== false ? "ai" : "scripted";
+  const first = sc.nodes[sc.start];
+  const messages: ChatMessage[] = [{ role: "partner", fr: first.them.fr, en: first.them.en, suggestions: first.replies.filter((r) => r.ok !== false).map((r) => ({ fr: r.fr, en: r.en })), at: now() }];
+  const id = `C-${randomUUID().slice(0, 13)}`;
+  db.insert(schema.conversationSessions).values({
+    id, scenarioId, mode, status: "active", level: learnerLevel(db).cefr, messages, nodeId: sc.start, studyDate: parisDate(date),
+  }).run();
+  return read(db, id);
+}
+
+/** Score how well free text matches a scripted reply (0–1). */
+export function matchScore(text: string, reply: ScriptReply): number {
+  const t = new Set(tokenize(looseAnswer(text)).map((w) => w.replace(/'$/, "")));
+  const target = tokenize(looseAnswer(reply.fr)).map((w) => w.replace(/'$/, "")).filter((w) => w.length >= 3);
+  const keywords = (reply.keywords ?? []).map((k) => looseAnswer(k));
+  const kwHit = keywords.some((k) => (k.includes(" ") ? looseAnswer(text).includes(k) : t.has(k)));
+  if (!target.length) return kwHit ? 0.6 : 0;
+  const overlap = target.filter((w) => t.has(w)).length / target.length;
+  return Math.min(1, overlap + (kwHit ? 0.35 : 0));
+}
+
+function scriptedTurn(sc: Scenario, nodeId: string, text: string, replyIndex?: number) {
+  const node = sc.nodes[nodeId];
+  let chosen: ScriptReply | undefined;
+  if (replyIndex !== undefined) chosen = node.replies[replyIndex];
+  else {
+    const scored = node.replies.map((r) => ({ r, s: matchScore(text, r) })).sort((a, b) => b.s - a.s);
+    if (scored[0] && scored[0].s >= 0.4) chosen = scored[0].r;
+  }
+  if (!chosen) {
+    return {
+      learner: { role: "learner" as const, fr: text, at: now() },
+      partner: {
+        role: "partner" as const, fr: "Pardon, je n'ai pas bien compris. Vous pouvez reformuler ?", en: "Sorry, I didn't quite understand. Can you rephrase?",
+        suggestions: node.replies.filter((r) => r.ok !== false).map((r) => ({ fr: r.fr, en: r.en })), at: now(),
+      },
+      nextNode: nodeId,
+    };
+  }
+  const exact = looseAnswer(text) === looseAnswer(chosen.fr);
+  const goodAlternative = node.replies.find((r) => r.ok !== false && r.next === chosen!.next) ?? node.replies.find((r) => r.ok !== false);
+  const learner: ChatMessage = {
+    role: "learner", fr: text, at: now(),
+    correction: chosen.ok === false ? { original: text, corrected: goodAlternative?.fr ?? chosen.fr, explanation: chosen.why ?? "" } : null,
+    model: chosen.ok !== false && !exact && replyIndex === undefined ? chosen.fr : undefined,
+  };
+  const next = chosen.next ? sc.nodes[chosen.next] : null;
+  const partner: ChatMessage | null = next
+    ? { role: "partner", fr: next.them.fr, en: next.them.en, suggestions: next.replies.filter((r) => r.ok !== false).map((r) => ({ fr: r.fr, en: r.en })), at: now() }
+    : null;
+  return { learner, partner, nextNode: chosen.next };
+}
+
+function aiSystem(sc: Scenario, level: ReturnType<typeof learnerLevel>) {
+  return `You are role-playing ${sc.partner} in France, talking with an English-speaking learner of French.
+Scenario goal for the learner: ${sc.goal}
+Address the learner with "${sc.register}". Learner level: ${level.cefr}. ${level.guidance}
+Stay in character and keep the conversation moving toward the goal. Reply in French only in "reply".
+Corrections: only correct real grammar or vocabulary errors in the learner's LAST message, gently, and don't correct trivial issues (missing accents, capitals, punctuation). If it was fine, correction is null.
+Offer 2–3 short suggested replies the learner could say next, at their level.
+Set "done": true only when the scenario has naturally concluded (after a goodbye).
+Reply with ONLY this JSON:
+{"reply": "...", "replyEnglish": "...", "correction": null | {"original": "...", "corrected": "...", "explanation": "short English explanation"}, "suggestions": [{"fr": "...", "en": "..."}], "done": false}`;
+}
+
+function toChatHistory(messages: ChatMessage[]) {
+  const out: { role: "user" | "assistant"; content: string }[] = [];
+  for (const m of messages) {
+    if (m.role === "note") continue;
+    const role = m.role === "partner" ? ("assistant" as const) : ("user" as const);
+    const content = m.role === "partner" ? JSON.stringify({ reply: m.fr, replyEnglish: m.en ?? "" }) : m.fr;
+    if (out.length === 0 && role === "assistant") out.push({ role: "user", content: "(The learner joins the conversation.)" });
+    out.push({ role, content });
+  }
+  return out;
+}
+
+export async function sendMessage(db: DB, id: string, text: string, replyIndex?: number, date: Date = new Date()): Promise<ConversationRecord> {
+  const conv = read(db, id);
+  if (conv.status === "completed") throw new HttpError(409, "This conversation has ended.");
+  const sc = getScenario(conv.scenarioId)!;
+  const clean = text.trim().slice(0, 400);
+  if (!clean && replyIndex === undefined) throw new HttpError(400, "Message is empty.");
+  let messages = [...conv.messages];
+  let nodeId = conv.nodeId;
+  let status: ConversationRecord["status"] = "active";
+  let mode = conv.mode;
+
+  if (mode === "ai") {
+    const provider = getProvider();
+    try {
+      if (!provider) throw new Error("AI provider not configured");
+      const learner: ChatMessage = { role: "learner", fr: clean, at: now() };
+      const turn = await askJson(provider, aiSystem(sc, learnerLevel(db)), [...toChatHistory(messages), { role: "user", content: clean }], ConversationTurnSchema, { maxTokens: 900, timeoutMs: 30_000 });
+      learner.correction = turn.correction && turn.correction.corrected.trim() && turn.correction.corrected.trim() !== clean ? turn.correction : null;
+      messages = [...messages, learner, { role: "partner", fr: turn.reply, en: turn.replyEnglish, suggestions: turn.suggestions, at: now() }];
+      if (turn.done) status = "active"; // learner ends explicitly to get the summary
+    } catch (err) {
+      console.warn("[conversation] AI failed, switching to guided script:", (err as Error).message);
+      mode = "scripted";
+      messages.push({ role: "note", fr: "The AI partner is unavailable right now, so this conversation continues on the guided script.", at: now() });
+    }
+  }
+  if (mode === "scripted") {
+    const reply = replyIndex !== undefined ? sc.nodes[nodeId ?? sc.start].replies[replyIndex] : undefined;
+    const t = scriptedTurn(sc, nodeId ?? sc.start, reply ? reply.fr : clean, replyIndex);
+    messages = [...messages, t.learner, ...(t.partner ? [t.partner] : [])];
+    nodeId = t.nextNode;
+    if (t.nextNode && sc.nodes[t.nextNode].replies.length === 0) nodeId = t.nextNode;
+  }
+  const last = conv.messages[conv.messages.length - 1]?.at;
+  const delta = last ? Math.min(120, Math.max(5, Math.round((Date.now() - new Date(last).getTime()) / 1000))) : 20;
+  const row = db.select({ s: schema.conversationSessions.activeSeconds }).from(schema.conversationSessions).where(eq(schema.conversationSessions.id, id)).get();
+  db.update(schema.conversationSessions).set({ messages, nodeId, status, mode, activeSeconds: (row?.s ?? 0) + delta, updatedAt: now(), studyDate: parisDate(date) })
+    .where(eq(schema.conversationSessions.id, id)).run();
+  return read(db, id);
+}
+
+/** Is the scripted conversation at a terminal node? */
+export function isScriptFinished(conv: ConversationRecord): boolean {
+  if (conv.mode !== "scripted" || !conv.nodeId) return false;
+  const sc = getScenario(conv.scenarioId);
+  return !!sc && sc.nodes[conv.nodeId]?.replies.length === 0;
+}
+
+function scriptedSummary(conv: ConversationRecord, sc: Scenario): ConversationSummary {
+  const learnerMsgs = conv.messages.filter((m) => m.role === "learner");
+  const corrections = learnerMsgs.filter((m) => m.correction).map((m) => m.correction!);
+  const finished = isScriptFinished(conv);
+  return {
+    summary: `${finished ? "You completed" : "You practised"} « ${sc.title} » with ${learnerMsgs.length} repl${learnerMsgs.length === 1 ? "y" : "ies"}. ${corrections.length ? `${corrections.length} thing${corrections.length > 1 ? "s" : ""} to polish below.` : "Your replies were appropriate and polite."}`,
+    corrections,
+    vocabulary: sc.vocabulary,
+    reviewSkillIds: corrections.length ? sc.skills.slice(0, 2) : [],
+    encouragement: corrections.length ? "Each slip you notice now is one you won't make in real life. Bien joué !" : "Très bien ! Try it again with free typing for an extra challenge.",
+  };
+}
+
+export async function endConversation(db: DB, id: string, date: Date = new Date()): Promise<ConversationRecord> {
+  const conv = read(db, id);
+  if (conv.status === "completed" && conv.summary) return conv;
+  const sc = getScenario(conv.scenarioId)!;
+  let summary: ConversationSummary = scriptedSummary(conv, sc);
+  const provider = getProvider();
+  if (conv.mode === "ai" && provider && conv.messages.some((m) => m.role === "learner")) {
+    try {
+      const transcript = conv.messages.filter((m) => m.role !== "note").map((m) => `${m.role === "partner" ? "Partner" : "Learner"}: ${m.fr}`).join("\n");
+      const skills = sc.skills.map((s) => `${s} (${SKILL_BY_ID[s]?.title})`).join(", ");
+      summary = await askJson(provider,
+        `You are a French teacher reviewing a learner's role-play conversation. Be encouraging and concrete. Only list real errors from the learner's lines. Reply with ONLY JSON: {"summary": "2-3 sentences in English", "corrections": [{"original": "...", "corrected": "...", "explanation": "..."}], "vocabulary": [{"fr": "...", "en": "..."}], "reviewSkillIds": ["skill ids from the list, only if relevant to errors"], "encouragement": "one sentence"}`,
+        [{ role: "user", content: `Scenario: ${sc.title} — ${sc.goal}\nRelevant skill ids: ${skills}\n\nTranscript:\n${transcript}` }],
+        ConversationSummarySchema, { maxTokens: 1500, timeoutMs: 40_000 });
+      summary.reviewSkillIds = summary.reviewSkillIds.filter((s) => !!SKILL_BY_ID[s]);
+    } catch (err) {
+      console.warn("[conversation] AI summary failed, using local summary:", (err as Error).message);
+    }
+  }
+  // Continuity: pull recommended skills forward in the review schedule.
+  const today = parisDate(date);
+  for (const sid of summary.reviewSkillIds) {
+    db.update(schema.reviewSchedule).set({ dueDate: today }).where(eq(schema.reviewSchedule.itemKey, `skill:${sid}`)).run();
+  }
+  db.update(schema.conversationSessions).set({ status: "completed", summary, updatedAt: now() }).where(eq(schema.conversationSessions.id, id)).run();
+  return read(db, id);
+}
+
+export async function explainLast(db: DB, id: string): Promise<string> {
+  const conv = read(db, id);
+  const last = [...conv.messages].reverse().find((m) => m.role === "partner");
+  if (!last) throw new HttpError(400, "Nothing to explain yet.");
+  const provider = getProvider();
+  if (!provider || conv.mode !== "ai") {
+    const sc = getScenario(conv.scenarioId)!;
+    const vocab = sc.vocabulary.filter((v) => looseAnswer(last.fr).includes(looseAnswer(v.fr.split(" (")[0].replace(/\(.*\)/, "")).split(" / ")[0]));
+    return `“${last.en}”${vocab.length ? `\n\nUseful here: ${vocab.map((v) => `${v.fr} = ${v.en}`).join("; ")}.` : ""}`;
+  }
+  const res = await askJson(provider, `You are a French tutor. Explain the given French sentence to an ${conv.level} English-speaking learner in 2–4 short sentences: meaning, any key grammar point and useful words. Reply ONLY JSON: {"text": "..."}`,
+    [{ role: "user", content: last.fr }], HelpSchema, { maxTokens: 500, timeoutMs: 20_000 });
+  return res.text;
+}
+
+export function getConversation(db: DB, id: string) {
+  return read(db, id);
+}
