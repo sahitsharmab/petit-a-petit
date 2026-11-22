@@ -2,11 +2,19 @@
 import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
 import { ArrowRight, Clock, Repeat2, Target, TrendingUp } from "lucide-react";
-import type { SessionSummary } from "@/lib/services/sessions";
+import type { Outcome, SessionSummary } from "@/lib/services/sessions";
 import { Button } from "@/components/ui/button";
 import { cn, pct } from "@/lib/utils";
 
-function ScoreRing({ value }: { value: number }) {
+const OUTCOME_LABELS: { key: Outcome; label: string; tone: string }[] = [
+  { key: "almost", label: "Almost", tone: "bg-warning-soft text-warning" },
+  { key: "hinted", label: "With a hint", tone: "bg-surface-2 text-ink" },
+  { key: "supported", label: "Text shown (listening)", tone: "bg-surface-2 text-ink" },
+  { key: "recovered", label: "Fixed on retry", tone: "bg-primary-soft text-primary" },
+  { key: "missed", label: "Missed", tone: "bg-danger-soft text-danger" },
+];
+
+function ScoreRing({ value, label }: { value: number; label: string }) {
   const reduce = useReducedMotion();
   const r = 52;
   const c = 2 * Math.PI * r;
@@ -21,7 +29,7 @@ function ScoreRing({ value }: { value: number }) {
       <div className="absolute inset-0 grid place-items-center text-center">
         <div>
           <p className="font-display text-4xl font-semibold">{pct(value)}</p>
-          <p className="text-xs text-muted">first try</p>
+          <p className="text-xs text-muted">{label}</p>
         </div>
       </div>
     </div>
@@ -31,10 +39,14 @@ function ScoreRing({ value }: { value: number }) {
 export function LessonSummary({ summary, onPracticeAgain, busy }: { summary: SessionSummary; onPracticeAgain: () => void; busy: boolean }) {
   const delta = summary.primarySkill.after - summary.primarySkill.before;
   const heading = summary.accuracy >= 0.85 ? "Magnifique !" : summary.accuracy >= 0.6 ? "Bien joué !" : "Courage — ça vient !";
+  const b = summary.breakdown;
+  // Summaries saved before the breakdown existed counted every non-wrong first answer.
+  const scoreLabel = b ? "exact, unaided" : "first try";
+  const toReview = b ? b.missed + b.recovered : summary.mistakes.length;
   return (
     <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="mx-auto max-w-2xl space-y-6 pb-16">
       <section className="card flex flex-col items-center gap-5 px-6 py-8 text-center sm:flex-row sm:text-left">
-        <ScoreRing value={summary.accuracy} />
+        <ScoreRing value={summary.accuracy} label={scoreLabel} />
         <div className="space-y-2">
           <p className="text-sm font-medium text-primary">Lesson complete</p>
           <h1 className="font-display text-3xl font-semibold">{heading}</h1>
@@ -44,9 +56,9 @@ export function LessonSummary({ summary, onPracticeAgain, busy }: { summary: Ses
 
       <section className="grid grid-cols-3 gap-3">
         {[
-          { icon: Target, label: "Correct first try", value: `${summary.firstTryCorrect}/${summary.total}` },
+          { icon: Target, label: b ? "Exact, unaided" : "Correct first try", value: `${summary.firstTryCorrect}/${summary.total}` },
           { icon: Clock, label: "Minutes", value: String(summary.minutes) },
-          { icon: Repeat2, label: "To review", value: String(summary.mistakes.length) },
+          { icon: Repeat2, label: "To review", value: String(toReview) },
         ].map(({ icon: Icon, label, value }) => (
           <div key={label} className="card p-4">
             <Icon className="size-4 text-subtle" />
@@ -55,6 +67,16 @@ export function LessonSummary({ summary, onPracticeAgain, busy }: { summary: Ses
           </div>
         ))}
       </section>
+
+      {b && OUTCOME_LABELS.some(({ key }) => b[key] > 0) && (
+        <section aria-label="Other answers" className="flex flex-wrap gap-2">
+          {OUTCOME_LABELS.filter(({ key }) => b[key] > 0).map(({ key, label, tone }) => (
+            <span key={key} className={cn("rounded-full px-3 py-1 text-sm font-medium", tone)}>
+              {label} <span className="tabular-nums">{b[key]}</span>
+            </span>
+          ))}
+        </section>
+      )}
 
       <section className="card space-y-3 p-5 sm:p-6">
         <div className="flex items-center justify-between gap-3">
@@ -78,16 +100,30 @@ export function LessonSummary({ summary, onPracticeAgain, busy }: { summary: Ses
       {summary.mistakes.length > 0 && (
         <section className="card p-5 sm:p-6">
           <h2 className="font-semibold">Corrections to remember</h2>
-          <p className="text-sm text-muted">These come back in your next warm-up.</p>
+          <p className="text-sm text-muted">Missed answers are scheduled for review.</p>
           <ul className="mt-4 divide-y divide-border">
-            {summary.mistakes.map((m) => (
-              <li key={m.exerciseId} className="space-y-1 py-3 first:pt-0 last:pb-0">
-                <p className="text-sm text-muted">{m.instruction}: <span className="text-ink">{m.prompt}</span></p>
-                {m.answer && <p className="text-sm"><span className="text-danger line-through decoration-danger/50" lang="fr">{m.answer}</span></p>}
-                <p className="font-medium text-success" lang="fr">{m.correct}</p>
-                <p className="text-sm text-muted">{m.explanation}</p>
-              </li>
-            ))}
+            {summary.mistakes.map((m) => {
+              const kind = m.kind ?? "missed";
+              return (
+                <li key={m.exerciseId} className="space-y-1 py-3 first:pt-0 last:pb-0">
+                  <p className="text-sm text-muted">{m.instruction}: <span className="text-ink">{m.prompt}</span></p>
+                  {m.answer && (
+                    <p className="text-sm">
+                      <span className="mr-1.5 text-xs font-medium uppercase tracking-wide text-muted">{kind === "almost" ? "You wrote" : "First answer"}</span>
+                      <span className={kind === "almost" ? "text-warning" : "text-danger line-through decoration-danger/50"} lang="fr">{m.answer}</span>
+                    </p>
+                  )}
+                  {kind === "recovered" && m.retryAnswer && (
+                    <p className="text-sm text-primary">
+                      <span className="mr-1.5 text-xs font-medium uppercase tracking-wide">Fixed on retry</span>
+                      <span lang="fr">{m.retryAnswer}</span> <span aria-hidden>✓</span>
+                    </p>
+                  )}
+                  <p className="font-medium text-success" lang="fr">{m.correct}</p>
+                  <p className="text-sm text-muted">{m.explanation}</p>
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

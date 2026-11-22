@@ -20,6 +20,8 @@ export interface ChatMessage {
   correction?: { original: string; corrected: string; explanation: string } | null;
   /** Model phrasing for a learner message (scripted mode). */
   model?: string;
+  /** Scripted mode: the partner couldn't tell what the learner meant and asked them to clarify. */
+  unresolved?: boolean;
   suggestions?: { fr: string; en: string }[];
   at: string;
 }
@@ -83,17 +85,56 @@ export function matchScore(text: string, reply: ScriptReply): number {
   return Math.min(1, overlap + (kwHit ? 0.35 : 0));
 }
 
+/** Does the text negate something (ne … pas / jamais / rien / personne, or a leading « non »)? */
+export function hasNegation(text: string): boolean {
+  const t = ` ${looseAnswer(text)} `;
+  return /^\snon\s/.test(t) || (/\s(ne\s|n')/.test(t) && /\s(pas|jamais|rien|personne)\s/.test(t));
+}
+
+/** Why the partner couldn't act on a free-text reply, or null when the intent is clear. */
+function unclearIntent(text: string, scored: { r: ScriptReply; s: number }[]): { fr: string; en: string; suggestions: ScriptReply[] } | null {
+  const best = scored[0];
+  if (!best || best.s < 0.4) {
+    return { fr: "Pardon, je n'ai pas bien compris. Vous pouvez reformuler ?", en: "Sorry, I didn't quite understand. Can you rephrase?", suggestions: [] };
+  }
+  // « Je ne voudrais pas de thé » shares words with « Je voudrais un thé » but means the opposite.
+  if (hasNegation(text) && !hasNegation(best.r.fr)) {
+    return { fr: "Ah, pardon : vous ne voulez pas ça ? Qu'est-ce que vous voulez, alors ?", en: "Oh, sorry: you don't want that? What would you like, then?", suggestions: [] };
+  }
+  const rival = scored.find((x) => x !== best && x.r.next !== best.r.next && x.r.ok !== false && x.s >= 0.4 && best.s - x.s < 0.1);
+  if (rival) {
+    return {
+      fr: `Pardon, vous voulez dire « ${best.r.fr} » ou « ${rival.r.fr} » ?`, en: `Sorry, do you mean "${best.r.en}" or "${rival.r.en}"?`,
+      suggestions: [best.r, rival.r],
+    };
+  }
+  return null;
+}
+
 function scriptedTurn(sc: Scenario, nodeId: string, text: string, replyIndex?: number) {
   const node = sc.nodes[nodeId];
   let chosen: ScriptReply | undefined;
   if (replyIndex !== undefined) chosen = node.replies[replyIndex];
   else {
     const scored = node.replies.map((r) => ({ r, s: matchScore(text, r) })).sort((a, b) => b.s - a.s);
-    if (scored[0] && scored[0].s >= 0.4) chosen = scored[0].r;
+    const unclear = unclearIntent(text, scored);
+    if (unclear) {
+      const good = unclear.suggestions.filter((r) => r.ok !== false);
+      const options = good.length ? good : node.replies.filter((r) => r.ok !== false);
+      return {
+        learner: { role: "learner" as const, fr: text, unresolved: true, at: now() },
+        partner: {
+          role: "partner" as const, fr: unclear.fr, en: unclear.en,
+          suggestions: options.map((r) => ({ fr: r.fr, en: r.en })), at: now(),
+        },
+        nextNode: nodeId,
+      };
+    }
+    chosen = scored[0].r;
   }
   if (!chosen) {
     return {
-      learner: { role: "learner" as const, fr: text, at: now() },
+      learner: { role: "learner" as const, fr: text, unresolved: true, at: now() },
       partner: {
         role: "partner" as const, fr: "Pardon, je n'ai pas bien compris. Vous pouvez reformuler ?", en: "Sorry, I didn't quite understand. Can you rephrase?",
         suggestions: node.replies.filter((r) => r.ok !== false).map((r) => ({ fr: r.fr, en: r.en })), at: now(),
@@ -195,13 +236,22 @@ export function isScriptFinished(conv: ConversationRecord): boolean {
 function scriptedSummary(conv: ConversationRecord, sc: Scenario): ConversationSummary {
   const learnerMsgs = conv.messages.filter((m) => m.role === "learner");
   const corrections = learnerMsgs.filter((m) => m.correction).map((m) => m.correction!);
+  const unresolved = learnerMsgs.filter((m) => m.unresolved).length;
+  const endedUnclear = learnerMsgs.at(-1)?.unresolved === true;
   const finished = isScriptFinished(conv);
+  const notes: string[] = [];
+  if (corrections.length) notes.push(`${corrections.length} thing${corrections.length > 1 ? "s" : ""} to polish below.`);
+  if (unresolved) {
+    notes.push(`${unresolved} repl${unresolved === 1 ? "y wasn't" : "ies weren't"} understood and needed rephrasing${endedUnclear ? ", and the conversation ended before the last one was cleared up" : ""}.`);
+  }
+  if (!notes.length) notes.push("Your replies were understood and polite.");
+  const needsWork = corrections.length > 0 || unresolved > 0;
   return {
-    summary: `${finished ? "You completed" : "You practised"} « ${sc.title} » with ${learnerMsgs.length} repl${learnerMsgs.length === 1 ? "y" : "ies"}. ${corrections.length ? `${corrections.length} thing${corrections.length > 1 ? "s" : ""} to polish below.` : "Your replies were appropriate and polite."}`,
+    summary: `${finished ? "You completed" : "You practised"} « ${sc.title} » with ${learnerMsgs.length} repl${learnerMsgs.length === 1 ? "y" : "ies"}. ${notes.join(" ")}`,
     corrections,
     vocabulary: sc.vocabulary,
-    reviewSkillIds: corrections.length ? sc.skills.slice(0, 2) : [],
-    encouragement: corrections.length ? "Each slip you notice now is one you won't make in real life. Bien joué !" : "Très bien ! Try it again with free typing for an extra challenge.",
+    reviewSkillIds: needsWork ? sc.skills.slice(0, 2) : [],
+    encouragement: needsWork ? "Each slip you notice now is one you won't make in real life. Bien joué !" : "Très bien ! Try it again with free typing for an extra challenge.",
   };
 }
 

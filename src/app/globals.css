@@ -8,7 +8,8 @@
   --surface-2: #f1ece3;
   --ink: #1c1a17;
   --muted: #6b645a;
-  --subtle: #9a9286;
+  /* ≥ 4.5:1 on background, surface and surface-2 (small informative labels use it). */
+  --subtle: #706a61;
   --border: #e6dfd3;
   --primary: #3b4fd8;
   --primary-hover: #3243c2;
@@ -33,7 +34,8 @@
   --surface-2: #23232c;
   --ink: #ecebf2;
   --muted: #a19eac;
-  --subtle: #76737f;
+  /* ≥ 4.5:1 on background, surface and surface-2. */
+  --subtle: #8b8994;
   --border: #2e2e39;
   --primary: #8e9cff;
   --primary-hover: #a3afff;

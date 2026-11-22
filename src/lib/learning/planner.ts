@@ -1,6 +1,7 @@
 import { ORDERED_SKILLS, getSkill } from "@/lib/content/curriculum";
 import { daysBetween } from "./dates";
 import { EMPTY_MASTERY, PASS_MASTERY, STRUGGLE_MASTERY, effectiveMastery, isPassed, type MasteryState } from "./mastery";
+import { conjOf, type FocusPattern } from "./patterns";
 
 export type LessonMode = "new" | "continue" | "consolidate" | "welcome-back" | "review";
 
@@ -38,6 +39,8 @@ export interface PlannerInput {
   lastStudyDate?: string | null;
   /** Number of earlier daily lessons per curriculum week. */
   dailyLessonsByWeek: Record<number, number>;
+  /** An active cross-item error pattern (e.g. « nous » endings) to target in the warm-up. */
+  focus?: FocusPattern | null;
 }
 
 export interface LessonPlan {
@@ -90,6 +93,11 @@ export function chooseReviewKeys(input: PlannerInput, primary: string, count: nu
     keys.push(key);
     skillsUsed.set(skillId, (skillsUsed.get(skillId) ?? 0) + 1);
   };
+  // An active error pattern comes first: one missed form plus a fresh verb with the same ending.
+  // These two don't count toward the per-skill variety cap.
+  if (input.focus) {
+    for (const k of [input.focus.missedKey, input.focus.freshKey]) if (k && !keys.includes(k) && keys.length < count) keys.push(k);
+  }
   const mistakes = [...input.recentMistakes].sort((a, b) => (a.lastDate < b.lastDate ? 1 : a.lastDate > b.lastDate ? -1 : b.count - a.count));
   for (const m of mistakes) add(m.itemKey, m.skillId);
   const due = [...input.dueItems].filter((d) => !d.itemKey.startsWith("skill:"))
@@ -152,6 +160,12 @@ export function planDailyLesson(input: PlannerInput): LessonPlan {
   const reviewKeys = chooseReviewKeys(input, primary, warmupCount);
 
   const mistakesInWarmup = input.recentMistakes.filter((m) => reviewKeys.includes(m.itemKey));
+  if (input.focus && reviewKeys.includes(input.focus.missedKey)) {
+    const fresh = input.focus.freshKey && reviewKeys.includes(input.focus.freshKey) ? conjOf(input.focus.freshKey)?.verb : null;
+    rationale.push(
+      `Focus on « nous » endings: you've missed them with ${input.focus.missedVerbs.map((v) => `« ${v} »`).join(", ")}. The warm-up revisits one${fresh ? ` and tries a new verb, « ${fresh} »` : ""}.`,
+    );
+  }
   if (mistakesInWarmup.length) {
     const labels = [...new Set(mistakesInWarmup.map((m) => m.label))].slice(0, 2).map((l) => `« ${l} »`).join(" and ");
     rationale.push(`Warm-up revisits ${labels}, which tripped you up recently.`);

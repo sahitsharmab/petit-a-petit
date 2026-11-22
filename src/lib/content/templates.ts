@@ -80,7 +80,7 @@ export const TEMPLATES: LessonTemplateDef[] = [
   },
   {
     id: "assessment",
-    name: "Readiness check",
+    name: "Course review",
     description: "A balanced test across the whole course.",
     showExplanation: true,
     blocks: [{ section: "core", from: "primary", count: 14 }],

@@ -145,12 +145,13 @@ export function LessonPlayer({ lesson, exercises, sessionId, initialState, initi
     await run(async () => {
       const res = await api<{ feedback: Feedback; state: PlayerState }>(`/api/sessions/${sessionId}/attempt`, {
         exerciseId: ex.id, answer: answerToString(ex, answer), hintsUsed: hintShown ? 1 : 0, attemptNo: (result?.attempts ?? 0) + 1,
+        transcriptShown: ex.type === "listening" && (answer.transcriptShown || !speechSupported),
       });
       setState(res.state);
       setRetrying(false);
       if (res.feedback.verdict !== "incorrect" && ex.audioText && ex.type !== "listening" && ex.type !== "dialogue" && settings.autoPlayAudio) speak(ex.audioText);
     });
-  }, [ex, busy, locked, answer, run, sessionId, hintShown, result?.attempts, speak, settings.autoPlayAudio]);
+  }, [ex, busy, locked, answer, run, sessionId, hintShown, result?.attempts, speechSupported, speak, settings.autoPlayAudio]);
 
   const reveal = React.useCallback(async () => {
     if (!ex || busy) return;

@@ -1,5 +1,5 @@
 import type { Verdict } from "@/lib/french/evaluate";
-import { daysBetween } from "./dates";
+import { daysBetween, parisDate } from "./dates";
 
 export type MasteryStatus = "new" | "learning" | "reviewing" | "mastered";
 
@@ -59,7 +59,9 @@ export function updateMastery(state: MasteryState, credit: number): MasteryState
 /** Mastery adjusted for forgetting: decays slowly after a week without practice. */
 export function effectiveMastery(mastery: number, lastPracticed: string | null | undefined, today: string): number {
   if (!lastPracticed) return mastery;
-  const days = daysBetween(lastPracticed.slice(0, 10), today);
+  // Timestamps are UTC ISO strings; compare Paris calendar days, like `today`.
+  const day = lastPracticed.includes("T") ? parisDate(new Date(lastPracticed)) : lastPracticed.slice(0, 10);
+  const days = daysBetween(day, today);
   if (days <= 7) return mastery;
   return mastery * Math.max(0.6, 1 - (days - 7) * 0.01);
 }

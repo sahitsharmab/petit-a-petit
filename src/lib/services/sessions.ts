@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { DB } from "@/lib/db";
 import { schema } from "@/lib/db";
 import { getSkill } from "@/lib/content/curriculum";
@@ -35,7 +35,12 @@ export interface ExerciseResult {
   done: boolean;
   lastAnswer?: string;
   feedback?: Feedback;
+  /** Listening: the transcript was visible when answering (supported, not unaided, listening). */
+  transcriptShown?: boolean;
 }
+
+/** How a first answer went; the headline score counts only "exact". */
+export type Outcome = "exact" | "almost" | "hinted" | "supported" | "recovered" | "missed";
 
 export interface PlayerState {
   phase: "intro" | "exercise" | "summary";
@@ -50,12 +55,23 @@ export interface PlayerState {
 
 export interface SessionSummary {
   total: number;
+  /** Exact, unaided first answers (the headline score). */
   firstTryCorrect: number;
+  /** firstTryCorrect / total. */
   accuracy: number;
+  /** Count of each first-answer outcome. Absent on summaries saved before this field existed. */
+  breakdown?: Record<Outcome, number>;
   minutes: number;
   primarySkill: { id: string; title: string; before: number; after: number; status: string };
   skills: { id: string; title: string; correct: number; total: number }[];
-  mistakes: { exerciseId: string; prompt: string; instruction: string; answer: string; correct: string; explanation: string; rule: string }[];
+  /**
+   * Answers worth another look. `answer` is the learner's FIRST answer; for "recovered" items
+   * `retryAnswer` is the corrected one they gave on the second try.
+   */
+  mistakes: {
+    exerciseId: string; prompt: string; instruction: string; answer: string; correct: string; explanation: string; rule: string;
+    kind?: "missed" | "recovered" | "almost"; retryAnswer?: string;
+  }[];
   learned: string[];
   nextStep: string;
 }
@@ -159,7 +175,7 @@ function evaluateChoice(ex: Exercise, answer: string) {
  */
 export async function submitAttempt(
   db: DB, sessionId: string, exerciseId: string, rawAnswer: string, hintsUsed: number, now: Date = new Date(), judge?: AnswerJudge,
-  attemptNo?: number,
+  attemptNo?: number, assist: { transcriptShown?: boolean } = {},
 ): Promise<{ feedback: Feedback; state: PlayerState }> {
   const s = readSession(db, sessionId);
   if (s.status === "completed" || s.state.phase === "summary") throw new HttpError(409, "This lesson is already completed.");
@@ -233,6 +249,9 @@ export async function submitAttempt(
   feedback.canRetry = feedback.verdict === "incorrect" && !isChoice && attempts < 2;
   const done = feedback.verdict !== "incorrect" || !feedback.canRetry;
   const today = parisDate(now);
+  // A visible transcript makes listening supported practice: it gets the same reduced credit as a hint.
+  const transcriptShown = ex.type === "listening" && (!!assist.transcriptShown || !!prev.transcriptShown);
+  const assistedHints = hintsUsed + (transcriptShown ? 1 : 0);
 
   const recorded = db.transaction((tx) => {
     const t = tx as unknown as DB;
@@ -245,13 +264,14 @@ export async function submitAttempt(
       sessionId, exerciseId, skillId: ex.skillId, itemKey: ex.itemKey, exerciseType: ex.type, answer: isChoice ? (ex.options?.[Number(answer)] ?? answer) : answer,
       expected: feedback.correctAnswer, verdict: feedback.verdict, isCorrect: feedback.verdict !== "incorrect", isFirst,
       mistakeTag: feedback.verdict === "incorrect" ? feedback.mistakeTag ?? null : feedback.verdict === "almost" ? feedback.mistakeTag ?? null : null,
-      note: feedback.note ?? null, hintsUsed, judgedBy: feedback.judgedBy, studyDate: today,
+      note: feedback.note ?? null, hintsUsed: assistedHints, judgedBy: feedback.judgedBy, studyDate: today,
     }).run();
-    if (isFirst) applyFirstAttempt(t, ex, feedback.verdict, hintsUsed, today, now.toISOString());
+    if (isFirst) applyFirstAttempt(t, ex, feedback.verdict, assistedHints, today, now.toISOString());
 
     const result: ExerciseResult = {
       attempts, hintsUsed: Math.max(prev.hintsUsed, hintsUsed),
       firstVerdict: prev.firstVerdict ?? feedback.verdict, verdict: feedback.verdict, done, lastAnswer: answer, feedback,
+      ...(transcriptShown ? { transcriptShown: true } : {}),
     };
     fresh.results[resultKey] = result;
     fresh.phase = "exercise";
@@ -293,6 +313,36 @@ export function advance(db: DB, sessionId: string, fromIndex?: number) {
   return state;
 }
 
+/** Session-level credit per outcome, matching the mastery model (near miss 0.6, assisted 0.7). */
+const OUTCOME_CREDIT: Record<Outcome, number> = { exact: 1, hinted: 0.7, supported: 0.7, almost: 0.6, recovered: 0, missed: 0 };
+
+/** Classify a first answer; `retry` is the retry-round result, `firstHints` the first attempt's hints. */
+export function outcomeOf(r: ExerciseResult, retry: ExerciseResult | undefined, firstHints: number | undefined): Outcome {
+  if (r.firstVerdict === "incorrect") {
+    const fixedInQuestion = r.attempts >= 2 && r.verdict !== "incorrect";
+    const fixedInRetryRound = !!retry?.firstVerdict && retry.firstVerdict !== "incorrect";
+    return fixedInQuestion || fixedInRetryRound ? "recovered" : "missed";
+  }
+  if (r.transcriptShown) return "supported";
+  if (r.firstVerdict === "almost") return "almost";
+  if ((firstHints ?? r.hintsUsed) > 0) return "hinted";
+  return "exact";
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Next-step text from what actually happened and what the planner will do (passed skills move on). */
+function nextStepText(b: Record<Outcome, number>, primaryPassed: boolean): string {
+  const parts: string[] = [];
+  if (b.missed) parts.push(`You missed ${plural(b.missed, "answer", "answers")}. ${b.missed === 1 ? "It's" : "They're"} scheduled for review.`);
+  if (b.recovered) parts.push(`You fixed ${plural(b.recovered, "answer", "answers")} on a second try. ${b.recovered === 1 ? "It comes" : "They come"} back once more so ${b.recovered === 1 ? "it sticks" : "they stick"}.`);
+  const assisted = b.almost + b.hinted + b.supported;
+  if (assisted) parts.push(`${plural(assisted, "answer was", "answers were")} nearly right or needed help. Try ${assisted === 1 ? "it" : "them"} unaided next time.`);
+  if (!parts.length) parts.push("Every answer was exact and unaided.");
+  parts.push(primaryPassed ? "This topic is passed, so new material comes next." : "This topic needs a bit more practice before new material.");
+  return parts.join(" ");
+}
+
 /**
  * Finish a session. Safe to retry: a completed session returns its saved summary unchanged.
  * Every queued exercise (including the retry round) must be answered first, and the skill
@@ -313,47 +363,61 @@ function completeInTx(db: DB, sessionId: string, now: Date): SessionSummary {
   const exercises = getLessonExercises(db, s.lessonId);
   const today = parisDate(now);
   const scored = exercises.filter((e) => state.results[e.id]?.firstVerdict);
-  const firstOk = scored.filter((e) => state.results[e.id].firstVerdict !== "incorrect").length;
 
-  const bySkill = new Map<string, { correct: number; total: number }>();
+  // The learner's actual first answer (and its hints) for each exercise, from the attempt log.
+  const firstRows = new Map<string, { answer: string; hintsUsed: number }>();
+  for (const a of db.select().from(schema.exerciseAttempts).where(eq(schema.exerciseAttempts.sessionId, sessionId)).orderBy(asc(schema.exerciseAttempts.id)).all()) {
+    if (!firstRows.has(a.exerciseId)) firstRows.set(a.exerciseId, { answer: a.answer, hintsUsed: a.hintsUsed });
+  }
+  const outcome = (e: Exercise): Outcome => outcomeOf(state.results[e.id], state.results[`${e.id}#retry`], firstRows.get(e.id)?.hintsUsed);
+  const outcomes = new Map(scored.map((e) => [e.id, outcome(e)]));
+  const breakdown: Record<Outcome, number> = { exact: 0, almost: 0, hinted: 0, supported: 0, recovered: 0, missed: 0 };
+  for (const o of outcomes.values()) breakdown[o]++;
+
+  // Skill review keeps partial credit for near misses and assisted answers.
+  const bySkill = new Map<string, { correct: number; total: number; credit: number }>();
   for (const e of scored) {
-    const cur = bySkill.get(e.skillId) ?? { correct: 0, total: 0 };
+    const cur = bySkill.get(e.skillId) ?? { correct: 0, total: 0, credit: 0 };
     cur.total++;
-    if (state.results[e.id].firstVerdict !== "incorrect") cur.correct++;
+    cur.credit += OUTCOME_CREDIT[outcomes.get(e.id)!];
+    if (outcomes.get(e.id) === "exact") cur.correct++;
     bySkill.set(e.skillId, cur);
   }
 
-  for (const [sid, v] of bySkill) applySkillReview(db, sid, v.correct / v.total, today);
+  for (const [sid, v] of bySkill) applySkillReview(db, sid, v.credit / v.total, today);
   if (lesson.kind === "daily" || lesson.kind === "practice") incrementPrimary(db, lesson.primarySkillId, now.toISOString());
 
   const after = loadProgress(db)[lesson.primarySkillId];
-  const mistakes = scored.filter((e) => state.results[e.id].firstVerdict === "incorrect").map((e) => {
+  const shown = (e: Exercise, value: string | undefined) => e.options && value !== undefined && /^\d+$/.test(value) ? e.options[Number(value)] ?? value : value ?? "";
+  const mistakes: SessionSummary["mistakes"] = scored.flatMap((e) => {
+    const kind = outcomes.get(e.id)!;
+    if (kind !== "missed" && kind !== "recovered" && kind !== "almost") return [];
     const r = state.results[e.id];
-    return {
-      exerciseId: e.id, prompt: e.prompt, instruction: e.instruction,
-      answer: e.options && r.lastAnswer !== undefined && /^\d+$/.test(r.lastAnswer) ? e.options[Number(r.lastAnswer)] ?? r.lastAnswer : r.lastAnswer ?? "",
+    const retry = state.results[`${e.id}#retry`];
+    const first = firstRows.get(e.id)?.answer ?? shown(e, r.lastAnswer);
+    const retryAnswer = kind === "recovered" ? (r.verdict !== "incorrect" ? shown(e, r.lastAnswer) : shown(e, retry?.lastAnswer)) : undefined;
+    return [{
+      exerciseId: e.id, prompt: e.prompt, instruction: e.instruction, kind, answer: first, retryAnswer,
       correct: r.feedback?.correctAnswer ?? e.accepted[0], explanation: r.feedback?.note ?? e.explanation, rule: e.rule,
-    };
+    }];
   });
-  const accuracy = scored.length ? firstOk / scored.length : 0;
+  const accuracy = scored.length ? breakdown.exact / scored.length : 0;
   const primary = getSkill(lesson.primarySkillId);
   const summary: SessionSummary = {
     total: scored.length,
-    firstTryCorrect: firstOk,
+    firstTryCorrect: breakdown.exact,
     accuracy,
+    breakdown,
     minutes: Math.max(1, Math.round(s.activeSeconds / 60)),
     primarySkill: { id: primary.id, title: primary.title, before: state.masteryBefore, after: after?.mastery ?? 0, status: after?.status ?? "new" },
-    skills: [...bySkill.entries()].map(([id, v]) => ({ id, title: getSkill(id).title, ...v })),
+    skills: [...bySkill.entries()].map(([id, v]) => ({ id, title: getSkill(id).title, correct: v.correct, total: v.total })),
     mistakes,
     learned: primary.objectives,
-    nextStep: accuracy >= 0.8
-      ? "Great work — you're ready to keep moving forward."
-      : accuracy >= 0.6
-        ? "Solid session. The items you missed will come back in tomorrow's warm-up."
-        : "This one is still settling in. Tomorrow will include extra practice on it — that's how it sticks.",
+    nextStep: nextStepText(breakdown, !!after?.passedAt),
   };
   state.phase = "summary";
-  writeState(db, sessionId, state, { status: "completed", completedAt: now.toISOString(), score: accuracy, summary });
+  // The lesson keeps its assigned date; the study (streak, activity) counts on the Paris day it was completed.
+  writeState(db, sessionId, state, { status: "completed", completedAt: now.toISOString(), score: accuracy, summary, studyDate: today });
   return summary;
 }
 

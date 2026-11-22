@@ -28,7 +28,7 @@ export default function LearnPage() {
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-display text-[2.1rem] font-semibold leading-tight">Your roadmap</h1>
-          <p className="mt-1 max-w-xl text-muted">Twelve weeks from A1 foundations to A2 readiness. Topics unlock by demonstrated understanding (70% mastery), not by the calendar — revisit any week whenever you like.</p>
+          <p className="mt-1 max-w-xl text-muted">Twelve weeks from A1 foundations through the core A2 grammar. Topics unlock by demonstrated understanding (70% mastery), not by the calendar — revisit any week whenever you like.</p>
         </div>
         <StartLessonButton label="Review what's due" practice={{ kind: "review" }} variant="secondary" size="md" />
       </header>

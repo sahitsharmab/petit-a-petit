@@ -13,9 +13,11 @@ export interface AnswerState {
   text: string;
   choice: number | null;
   tiles: number[];
+  /** Listening: the learner revealed the transcript (reported as supported practice). */
+  transcriptShown: boolean;
 }
 
-export const EMPTY_ANSWER: AnswerState = { text: "", choice: null, tiles: [] };
+export const EMPTY_ANSWER: AnswerState = { text: "", choice: null, tiles: [], transcriptShown: false };
 
 export interface ViewProps {
   ex: PublicExercise;
@@ -72,6 +74,27 @@ function TextAnswer({ value, onChange, onSubmit, locked, multiline, placeholder,
 
 function OptionList({ ex, answer, setAnswer, feedback, locked, onSubmit }: Pick<ViewProps, "ex" | "answer" | "setAnswer" | "feedback" | "locked" | "onSubmit">) {
   const opts = ex.options ?? [];
+  const refs = React.useRef<(HTMLButtonElement | null)[]>([]);
+  // Radio-group keyboard pattern: one tab stop; arrows move focus and select (wrapping), Home/End jump.
+  const onRadioKey = (e: React.KeyboardEvent, i: number) => {
+    if (locked || !opts.length) return;
+    if (e.key === "Enter") {
+      // Enter on an option checks the answer (Space selects, as for any radio).
+      e.preventDefault();
+      if (answer.choice === null) setAnswer({ ...answer, choice: i });
+      else onSubmit();
+      return;
+    }
+    const last = opts.length - 1;
+    const next = e.key === "ArrowDown" || e.key === "ArrowRight" ? (i === last ? 0 : i + 1)
+      : e.key === "ArrowUp" || e.key === "ArrowLeft" ? (i === 0 ? last : i - 1)
+        : e.key === "Home" ? 0 : e.key === "End" ? last : null;
+    if (next === null) return;
+    e.preventDefault();
+    setAnswer({ ...answer, choice: next });
+    refs.current[next]?.focus();
+  };
+  const tabStop = answer.choice ?? 0;
   React.useEffect(() => {
     if (locked) return;
     const onKey = (e: KeyboardEvent) => {
@@ -91,6 +114,8 @@ function OptionList({ ex, answer, setAnswer, feedback, locked, onSubmit }: Pick<
         const isWrongPick = feedback && feedback.chosenIndex === i && feedback.verdict === "incorrect";
         return (
           <motion.button key={i} type="button" role="radio" aria-checked={selected} disabled={locked}
+            ref={(el: HTMLButtonElement | null) => { refs.current[i] = el; }} tabIndex={i === tabStop ? 0 : -1}
+            onKeyDown={(e) => onRadioKey(e, i)}
             onClick={() => setAnswer({ ...answer, choice: i })}
             onDoubleClick={() => { setAnswer({ ...answer, choice: i }); onSubmit(); }}
             animate={isWrongPick ? { x: [0, -6, 6, -3, 3, 0] } : undefined} transition={{ duration: 0.35 }}
@@ -275,7 +300,8 @@ function SentenceBuilderView(p: ViewProps) {
 
 function ListeningView(p: ViewProps) {
   const [plays, setPlays] = React.useState(0);
-  const [reveal, setReveal] = React.useState(false);
+  const reveal = p.answer.transcriptShown;
+  const setReveal = (v: boolean) => p.setAnswer({ ...p.answer, transcriptShown: v });
   const text = p.ex.audioText ?? "";
   const { speak } = p;
   const play = React.useCallback((rate?: number) => { speak(text, rate); setPlays((n) => n + 1); }, [speak, text]);
@@ -300,17 +326,19 @@ function ListeningView(p: ViewProps) {
             <Snail className="size-4" /> Slower
           </button>
           {(!p.speechSupported || reveal || p.locked) ? null : (
-            <button type="button" onClick={() => setReveal(true)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted hover:bg-surface-2 hover:text-ink">
+            <button type="button" onClick={() => setReveal(true)} title="Counts as supported listening, not unaided"
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted hover:bg-surface-2 hover:text-ink">
               <Eye className="size-4" /> Show text
             </button>
           )}
         </div>
-        <p className="text-xs text-subtle">{plays === 0 ? "Press play — replay as often as you like." : `Played ${plays}×`}</p>
+        <p className="text-xs text-muted">{plays === 0 ? "Press play — replay as often as you like." : `Played ${plays}×`}</p>
         {(!p.speechSupported || reveal) && !p.locked && (
-          <p className="rounded-xl bg-surface-2 px-3 py-2 text-sm" lang="fr">
+          <div className="rounded-xl bg-surface-2 px-3 py-2 text-sm">
             {!p.speechSupported && <span className="mb-1 flex items-center justify-center gap-1 text-xs text-muted"><Headphones className="size-3.5" /> Audio isn&apos;t available in this browser — read instead:</span>}
-            {p.ex.mode === "dictation" ? text : text}
-          </p>
+            <p lang="fr">{text}</p>
+            <p className="mt-1 text-xs text-muted">With the text shown, this counts as supported listening practice.</p>
+          </div>
         )}
       </PromptCard>
       {p.ex.mode === "choice" ? (

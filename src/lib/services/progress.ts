@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, like, lte, sql } from "drizzle-orm";
 import type { DB } from "@/lib/db";
 import { schema } from "@/lib/db";
 import type { Exercise } from "@/lib/content/types";
@@ -9,6 +9,8 @@ import { addDays } from "@/lib/learning/dates";
 import { EMPTY_MASTERY, creditFor, isPassed, updateMastery, type MasteryState } from "@/lib/learning/mastery";
 import type { PlannerInput, RecentMistake, SkillProgress } from "@/lib/learning/planner";
 import { qualityFor, qualityFromAccuracy, scheduleReview } from "@/lib/learning/srs";
+import { PATTERN_WINDOW_DAYS, nousFocus, type FocusPattern } from "@/lib/learning/patterns";
+import { getVerb } from "@/lib/french/verbs";
 
 /** Human label for a review item, e.g. « tu parles » or the sentence itself. */
 export function labelForExercise(ex: Pick<Exercise, "itemKey" | "prompt" | "translation" | "audioText" | "type">): string {
@@ -127,6 +129,30 @@ export function loadStudyDates(db: DB): string[] {
   return [...new Set([...lessons, ...convos].map((r) => r.d))].sort();
 }
 
+/** The active cross-item error pattern, if any (currently « nous » endings). */
+export function loadFocusPattern(db: DB, today: string, progress: Record<string, SkillProgress> = loadProgress(db)): FocusPattern | null {
+  const since = addDays(today, -PATTERN_WINDOW_DAYS);
+  const attempts = db.select({
+    id: schema.exerciseAttempts.id, itemKey: schema.exerciseAttempts.itemKey, verdict: schema.exerciseAttempts.verdict,
+    hintsUsed: schema.exerciseAttempts.hintsUsed, studyDate: schema.exerciseAttempts.studyDate, isFirst: schema.exerciseAttempts.isFirst,
+  }).from(schema.exerciseAttempts)
+    .where(and(eq(schema.exerciseAttempts.isFirst, true), gte(schema.exerciseAttempts.studyDate, since), like(schema.exerciseAttempts.itemKey, "%:nous%")))
+    .all().map((a) => ({ ...a, verdict: a.verdict as Verdict }));
+  // Fresh-verb candidates: verbs from conjugation topics the learner has already practised.
+  const verbsByTense: Record<string, string[]> = {};
+  for (const s of SKILLS) {
+    const conj = s.practice.conj;
+    if (!conj || conj.negative || !(progress[s.id]?.attempts > 0)) continue;
+    const list = (verbsByTense[conj.tense] ??= []);
+    for (const v of conj.verbs) if (!list.includes(v) && !getVerbSafe(v)?.reflexive) list.push(v);
+  }
+  return nousFocus(attempts, today, verbsByTense);
+}
+
+function getVerbSafe(v: string) {
+  try { return getVerb(v); } catch { return null; }
+}
+
 export function loadPlannerInput(db: DB, today: string): PlannerInput {
   const dueItems = db.select().from(schema.reviewSchedule).where(lte(schema.reviewSchedule.dueDate, today)).all()
     .map((r) => ({ itemKey: r.itemKey, skillId: r.skillId, label: r.label, dueDate: r.dueDate, ease: r.ease, lapses: r.lapses }))
@@ -135,9 +161,11 @@ export function loadPlannerInput(db: DB, today: string): PlannerInput {
   const daily = db.select({ week: schema.generatedLessons.weekNumber, n: sql<number>`count(*)` }).from(schema.generatedLessons)
     .where(and(eq(schema.generatedLessons.kind, "daily"), sql`${schema.generatedLessons.lessonDate} < ${today}`))
     .groupBy(schema.generatedLessons.weekNumber).all();
+  const progress = loadProgress(db);
   return {
     today,
-    progress: loadProgress(db),
+    progress,
+    focus: loadFocusPattern(db, today, progress),
     dueItems,
     recentMistakes: loadRecentMistakes(db, today),
     lastStudyDate: before[before.length - 1] ?? null,

@@ -12,7 +12,7 @@ export const WEEKS: WeekDef[] = [
   { number: 9, title: "Telling the past II", focus: "Passé composé with être, time expressions", cefr: "A2", description: "Je suis allé(e), hier, il y a, depuis." },
   { number: 10, title: "Fluent combinations", focus: "Pronouns, practical sentence combinations", cefr: "A2", description: "Le / la / lui / y / en and connecting ideas with parce que, quand, mais." },
   { number: 11, title: "Real situations", focus: "Listening and situational conversation", cefr: "A2", description: "Train your ear and handle cafés, appointments and landlords." },
-  { number: 12, title: "A2 readiness", focus: "Comprehensive review, speaking practice, A2 readiness assessment", cefr: "A2", description: "Consolidate everything and check where you stand." },
+  { number: 12, title: "Course review", focus: "Comprehensive review and a mixed grammar and vocabulary check", cefr: "A2", description: "Consolidate everything and see which topics need another pass." },
 ];
 
 const S = (s: SkillDef) => s;
@@ -381,11 +381,13 @@ export const SKILLS: SkillDef[] = [
     practice: { includeSkills: ["w1-er-present", "w2-etre", "w2-avoir", "w3-articles", "w3-adjectives", "w4-negation", "w4-questions", "w5-modals", "w6-reflexive", "w7-futur-proche", "w8-pc-avoir", "w9-pc-etre", "w10-object-pronouns"], types: ["multiple_choice", "fill_blank", "translation", "conjugation", "sentence_builder", "listening"] },
   }),
   S({
-    id: "w12-assessment", week: 12, order: 2, title: "A2 readiness check", short: "A2 check", cefr: "A2", category: "review",
-    summary: "A balanced check across all twelve weeks.",
-    objectives: ["Measure readiness for A2", "Identify topics for continued practice"],
+    // Id kept for saved progress. Not an A2 readiness claim: that needs a coverage plan plus
+    // real listening and interaction tasks (audit F10).
+    id: "w12-assessment", week: 12, order: 2, title: "Course review", short: "Course review", cefr: "A2", category: "review",
+    summary: "A mixed grammar and vocabulary check drawn from weeks 1–10.",
+    objectives: ["Check written grammar and vocabulary from the course", "Identify topics for continued practice"],
     explanation: [
-      { heading: "How this works", body: "This lesson samples every week of the course. Answer without hints where you can — your result tells you which topics are solid and which deserve another pass before moving on to B1 material." },
+      { heading: "How this works", body: "This review samples written grammar and vocabulary from weeks 1–10. Answer without hints where you can. Your result shows which topics are solid and which deserve another pass. It doesn't test listening or spontaneous conversation, so it isn't a measure of A2 level on its own." },
     ],
     practice: { includeSkills: ["w1-pronouns", "w1-er-present", "w2-etre", "w2-avoir", "w2-aller-faire", "w3-articles", "w3-adjectives", "w4-negation", "w4-questions", "w4-prepositions", "w5-modals", "w5-irregular", "w6-reflexive", "w7-futur-proche", "w8-pc-avoir", "w8-pc-irregular", "w9-pc-etre", "w9-time", "w10-object-pronouns", "w10-y-en"], types: ["multiple_choice", "fill_blank", "translation", "conjugation", "transformation", "listening"] },
   }),
