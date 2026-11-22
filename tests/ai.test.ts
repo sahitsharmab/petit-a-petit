@@ -6,6 +6,7 @@ import { JudgeSchema, LessonEnhancementSchema, type LessonEnhancement } from "@/
 import { getLessonExercises, getOrCreateDailyLesson } from "@/lib/services/lessons";
 import { getOrStartSession, submitAttempt } from "@/lib/services/sessions";
 import { assembleLesson } from "@/lib/learning/assemble";
+import { answerUntil } from "./helpers";
 
 const fake = (...replies: string[]): Provider & { calls: number } => {
   const p = {
@@ -112,8 +113,10 @@ describe("AI fallback", () => {
   it("keeps the local verdict when the AI judge fails, and uses it when it works", async () => {
     const db = createDb(":memory:");
     const lesson = await getOrCreateDailyLesson(db, new Date("2026-11-21T19:00:00Z"));
-    const ex = getLessonExercises(db, lesson.id).find((e) => e.allowAiJudge)!;
+    const all = getLessonExercises(db, lesson.id);
+    const ex = all.find((e) => e.allowAiJudge)!;
     const s = getOrStartSession(db, lesson.id);
+    await answerUntil(db, s.id, all, ex.id);
     const failing = await submitAttempt(db, s.id, ex.id, "phrase alternative", 0, new Date(), async () => { throw new Error("timeout"); });
     expect(failing.feedback.verdict).toBe("incorrect");
     expect(failing.feedback.judgedBy).toBe("local");

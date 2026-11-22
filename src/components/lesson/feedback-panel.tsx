@@ -29,9 +29,11 @@ function Marks({ marks, tone }: { marks: Mark[]; tone: "wrong" | "right" }) {
   );
 }
 
-export function FeedbackPanel({ feedback, seed, onContinue, onRetry, onReveal, hint, speak, isChoice }: {
+export function FeedbackPanel({ feedback, seed, onContinue, onRetry, onReveal, hint, speak, isChoice, busy = false }: {
   feedback: Feedback;
   seed: number;
+  /** A request is in flight: actions are disabled so they can't be sent twice. */
+  busy?: boolean;
   onContinue: () => void;
   onRetry: () => void;
   onReveal: () => void;
@@ -94,11 +96,11 @@ export function FeedbackPanel({ feedback, seed, onContinue, onRetry, onReveal, h
         <div className="mt-4 flex flex-wrap justify-end gap-2">
           {feedback.canRetry ? (
             <>
-              <Button variant="ghost" onClick={onReveal}>Show answer</Button>
-              <Button variant="danger" onClick={onRetry} autoFocus><RotateCcw /> Try again</Button>
+              <Button variant="ghost" onClick={onReveal} disabled={busy}>Show answer</Button>
+              <Button variant="danger" onClick={onRetry} disabled={busy} autoFocus><RotateCcw /> Try again</Button>
             </>
           ) : (
-            <Button variant={v === "correct" ? "success" : v === "almost" ? "primary" : "danger"} size="lg" onClick={onContinue} autoFocus className="min-w-36">
+            <Button variant={v === "correct" ? "success" : v === "almost" ? "primary" : "danger"} size="lg" onClick={onContinue} disabled={busy} autoFocus className="min-w-36">
               Continue <ArrowRight />
             </Button>
           )}

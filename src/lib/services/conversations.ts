@@ -53,11 +53,16 @@ export function learnerLevel(db: DB): { cefr: string; week: number; guidance: st
 
 const now = () => new Date().toISOString();
 
+/** The AI provider, but only while AI is switched on in Settings. Checked at every provider call. */
+function allowedProvider(db: DB) {
+  const settings = db.select().from(schema.learningSettings).where(eq(schema.learningSettings.id, 1)).get();
+  return settings?.aiEnabled === false ? null : getProvider();
+}
+
 export function startConversation(db: DB, scenarioId: string, date: Date = new Date()): ConversationRecord {
   const sc = getScenario(scenarioId);
   if (!sc) throw new HttpError(404, "Unknown scenario");
-  const settings = db.select().from(schema.learningSettings).where(eq(schema.learningSettings.id, 1)).get();
-  const mode = getProvider() && settings?.aiEnabled !== false ? "ai" : "scripted";
+  const mode = allowedProvider(db) ? "ai" : "scripted";
   const first = sc.nodes[sc.start];
   const messages: ChatMessage[] = [{ role: "partner", fr: first.them.fr, en: first.them.en, suggestions: first.replies.filter((r) => r.ok !== false).map((r) => ({ fr: r.fr, en: r.en })), at: now() }];
   const id = `C-${randomUUID().slice(0, 13)}`;
@@ -145,8 +150,13 @@ export async function sendMessage(db: DB, id: string, text: string, replyIndex?:
   let status: ConversationRecord["status"] = "active";
   let mode = conv.mode;
 
+  if (mode === "ai" && !allowedProvider(db)) {
+    // AI was switched off (or unconfigured) after this chat started: stop sending it anything.
+    mode = "scripted";
+    messages.push({ role: "note", fr: "AI is turned off, so this conversation continues on the guided script. Nothing more is sent to the AI partner.", at: now() });
+  }
   if (mode === "ai") {
-    const provider = getProvider();
+    const provider = allowedProvider(db);
     try {
       if (!provider) throw new Error("AI provider not configured");
       const learner: ChatMessage = { role: "learner", fr: clean, at: now() };
@@ -200,7 +210,7 @@ export async function endConversation(db: DB, id: string, date: Date = new Date(
   if (conv.status === "completed" && conv.summary) return conv;
   const sc = getScenario(conv.scenarioId)!;
   let summary: ConversationSummary = scriptedSummary(conv, sc);
-  const provider = getProvider();
+  const provider = allowedProvider(db);
   if (conv.mode === "ai" && provider && conv.messages.some((m) => m.role === "learner")) {
     try {
       const transcript = conv.messages.filter((m) => m.role !== "note").map((m) => `${m.role === "partner" ? "Partner" : "Learner"}: ${m.fr}`).join("\n");
@@ -227,7 +237,7 @@ export async function explainLast(db: DB, id: string): Promise<string> {
   const conv = read(db, id);
   const last = [...conv.messages].reverse().find((m) => m.role === "partner");
   if (!last) throw new HttpError(400, "Nothing to explain yet.");
-  const provider = getProvider();
+  const provider = allowedProvider(db);
   if (!provider || conv.mode !== "ai") {
     const sc = getScenario(conv.scenarioId)!;
     const vocab = sc.vocabulary.filter((v) => looseAnswer(last.fr).includes(looseAnswer(v.fr.split(" (")[0].replace(/\(.*\)/, "")).split(" / ")[0]));

@@ -1,4 +1,4 @@
-import { expandAll, levenshtein, looseAnswer, normalizeAnswer, tokenize } from "./normalize";
+import { canonicalChars, expandAll, levenshtein, looseAnswer, normalizeAnswer, tokenize } from "./normalize";
 import { joinWithElision } from "./conjugate";
 
 export type Verdict = "correct" | "almost" | "incorrect";
@@ -19,6 +19,11 @@ export interface EvaluateInput {
   confusables?: Confusable[];
   /** Tag applied to unclassified wrong answers. */
   defaultTag?: string;
+  /**
+   * For transformations: the original sentence. Returning it unchanged is never a transformation,
+   * except an intonation question, which must then actually end with « ? ».
+   */
+  unchangedFrom?: string;
 }
 
 export interface Mark {
@@ -77,6 +82,21 @@ export function evaluateAnswer(input: EvaluateInput): EvaluateResult {
 
   if (!answer) {
     return { verdict: "incorrect", expected, closest: expected, mistakeTag: "blank", note: "No answer given." };
+  }
+
+  // Punctuation is normally ignored, but for a transformation the unchanged sentence only
+  // counts as an intonation question when it is written with « ? ».
+  if (input.unchangedFrom !== undefined && answer === normalizeAnswer(input.unchangedFrom)) {
+    const intonationIdx = accepted.findIndex((a) => /\?\s*$/.test(a.trim()) && normalizeAnswer(a) === answer);
+    if (intonationIdx >= 0 && /\?\s*$/.test(canonicalChars(input.answer).trim())) {
+      return { verdict: "correct", expected, closest: accepted[intonationIdx] };
+    }
+    return {
+      verdict: "incorrect", expected, closest: intonationIdx >= 0 ? accepted[intonationIdx] : expected, mistakeTag: "unchanged",
+      note: intonationIdx >= 0
+        ? "Without « ? » this is still the statement. Add a question mark, or use est-ce que or inversion."
+        : "That's the original sentence. It still needs to be transformed.",
+    };
   }
 
   const exactIdx = acceptedNorm.indexOf(answer);

@@ -17,8 +17,28 @@ export async function parseBody<S extends z.ZodTypeAny>(req: Request, schema: S)
   return schema.parse(body);
 }
 
+/**
+ * Reject state-changing requests sent by another website. Browsers attach Origin and
+ * Sec-Fetch-Site to cross-site requests; same-origin requests and local tools (no headers) pass.
+ */
+export function isCrossSite(req: Request): boolean {
+  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return false;
+  const site = req.headers.get("sec-fetch-site");
+  if (site && site !== "same-origin" && site !== "none") return true;
+  const origin = req.headers.get("origin");
+  if (!origin) return false;
+  try {
+    return new URL(origin).host !== req.headers.get("host");
+  } catch {
+    return true;
+  }
+}
+
 export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response> | Response) {
   return async (...args: A) => {
+    if (args[0] instanceof Request && isCrossSite(args[0])) {
+      return NextResponse.json({ error: "Cross-site requests are not allowed." }, { status: 403 });
+    }
     try {
       return await fn(...args);
     } catch (err) {

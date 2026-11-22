@@ -70,7 +70,11 @@ export function assembleLesson(input: AssembleInput): Exercise[] {
       continue;
     }
     if (block.from === "week") {
-      const weekSkills = SKILLS.filter((s) => s.week === input.weekNumber && s.category !== "review");
+      const inWeek = SKILLS.filter((s) => s.week === input.weekNumber);
+      const taught = inWeek.filter((s) => s.category !== "review");
+      // A review-only week (Week 12) revises through its review skills, which mix the earlier weeks.
+      const weekSkills = taught.length ? taught : inWeek.filter((s) => s.practice.includeSkills?.length);
+      if (!weekSkills.length) continue;
       for (let i = 0; i < block.count; i++) {
         const s = weekSkills[i % weekSkills.length];
         tryTypes(block.section, s.id, [pick(rng, s.practice.types), ...s.practice.types]);

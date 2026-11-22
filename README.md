@@ -20,6 +20,10 @@ npm start          # → http://localhost:3000
 For development with hot reload use `npm run dev`. The SQLite database is created
 automatically at `data/french.db` on first launch (migrations + curriculum seed run on boot).
 
+Both commands listen on `127.0.0.1` only, so the app (and its import/reset endpoints) is not
+reachable from other devices on your network. Importing a backup saves a copy of your current
+progress in `data/backups/` first.
+
 ## What's inside
 
 | Area | What it does |

@@ -167,13 +167,19 @@ function DataCard() {
   const [confirm, setConfirm] = React.useState("");
 
   const onFile = async (file: File) => {
-    if (!window.confirm("Importing replaces ALL current progress with the backup. Continue?")) return;
     setBusy(true);
     setMsg(null);
     try {
       const json = JSON.parse(await file.text());
-      const res = await api<{ imported: Record<string, number> }>("/api/import", json);
-      setMsg({ tone: "ok", text: `Imported ${res.imported.generatedLessons ?? 0} lessons and ${res.imported.exerciseAttempts ?? 0} answers.` });
+      // Validate first and show what the file contains before anything is replaced.
+      const { preview } = await api<{ preview: Record<string, number> }>("/api/import?preview=1", json);
+      const what = `${preview.generatedLessons} lessons, ${preview.lessonSessions} sessions and ${preview.exerciseAttempts} answers`;
+      if (!window.confirm(`This backup contains ${what}.\n\nImporting replaces ALL current progress. A copy of your current progress is saved first in data/backups. Continue?`)) return;
+      const res = await api<{ imported: Record<string, number>; safetyCopy?: string }>("/api/import", json);
+      setMsg({
+        tone: "ok",
+        text: `Imported ${res.imported.generatedLessons ?? 0} lessons and ${res.imported.exerciseAttempts ?? 0} answers.${res.safetyCopy ? ` Your previous progress was saved as data/backups/${res.safetyCopy}.` : ""}`,
+      });
       router.refresh();
     } catch (e) {
       setMsg({ tone: "err", text: e instanceof SyntaxError ? "That file isn't valid JSON." : (e as Error).message });

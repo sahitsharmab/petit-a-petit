@@ -25,11 +25,13 @@ export function createDb(file: string): DB {
 
 const globalForDb = globalThis as unknown as { __francaisDb?: DB };
 
+/** Path of the app database file. */
+export function dbFilePath(): string {
+  return path.resolve(process.env.FRANCAIS_DB_PATH ?? path.join(process.cwd(), "data", "french.db"));
+}
+
 export function getDb(): DB {
-  if (!globalForDb.__francaisDb) {
-    const file = process.env.FRANCAIS_DB_PATH ?? path.join(process.cwd(), "data", "french.db");
-    globalForDb.__francaisDb = createDb(file);
-  }
+  if (!globalForDb.__francaisDb) globalForDb.__francaisDb = createDb(dbFilePath());
   return globalForDb.__francaisDb;
 }
 

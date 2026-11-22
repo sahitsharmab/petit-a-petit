@@ -144,34 +144,34 @@ export function LessonPlayer({ lesson, exercises, sessionId, initialState, initi
     if (!ex || busy || locked || !hasAnswer(ex, answer)) return;
     await run(async () => {
       const res = await api<{ feedback: Feedback; state: PlayerState }>(`/api/sessions/${sessionId}/attempt`, {
-        exerciseId: ex.id, answer: answerToString(ex, answer), hintsUsed: hintShown ? 1 : 0,
+        exerciseId: ex.id, answer: answerToString(ex, answer), hintsUsed: hintShown ? 1 : 0, attemptNo: (result?.attempts ?? 0) + 1,
       });
       setState(res.state);
       setRetrying(false);
       if (res.feedback.verdict !== "incorrect" && ex.audioText && ex.type !== "listening" && ex.type !== "dialogue" && settings.autoPlayAudio) speak(ex.audioText);
     });
-  }, [ex, busy, locked, answer, run, sessionId, hintShown, speak, settings.autoPlayAudio]);
+  }, [ex, busy, locked, answer, run, sessionId, hintShown, result?.attempts, speak, settings.autoPlayAudio]);
 
   const reveal = React.useCallback(async () => {
-    if (!ex) return;
+    if (!ex || busy) return;
     await run(async () => {
       const res = await api<{ feedback: Feedback; state: PlayerState }>(`/api/sessions/${sessionId}/attempt`, {
-        exerciseId: ex.id, answer: answerToString(ex, answer) || "—", hintsUsed: 1,
+        exerciseId: ex.id, answer: answerToString(ex, answer) || "—", hintsUsed: 1, attemptNo: (result?.attempts ?? 0) + 1,
       });
       setState(res.state);
       setRetrying(false);
     });
-  }, [ex, run, sessionId, answer]);
+  }, [ex, busy, run, sessionId, answer, result?.attempts]);
 
   const next = React.useCallback(async () => {
     if (busy) return;
     await run(async () => {
-      const res = await api<{ state: PlayerState }>(`/api/sessions/${sessionId}/advance`);
+      const res = await api<{ state: PlayerState }>(`/api/sessions/${sessionId}/advance`, { fromIndex: state.index });
       setState(res.state);
       window.scrollTo({ top: 0, behavior: "smooth" });
       if (res.state.index >= res.state.queue.length) await finish();
     });
-  }, [busy, run, sessionId, finish]);
+  }, [busy, run, sessionId, state.index, finish]);
 
   const startExercises = React.useCallback(async () => {
     setState((s) => ({ ...s, phase: "exercise" }));
@@ -273,7 +273,7 @@ export function LessonPlayer({ lesson, exercises, sessionId, initialState, initi
           <AnimatePresence mode="wait" initial={false}>
             {feedback ? (
               <FeedbackPanel key={`fb-${resultKey}-${result?.attempts}`} feedback={feedback} seed={state.index} hint={ex.hint} speak={speak} isChoice={isChoiceExercise(ex)}
-                onContinue={next} onRetry={() => { setRetrying(true); setHintShown(true); }} onReveal={reveal} />
+                busy={busy} onContinue={next} onRetry={() => { setRetrying(true); setHintShown(true); }} onReveal={reveal} />
             ) : (
               <motion.div key="actions" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="border-t border-border bg-background/92 backdrop-blur">
                 <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">

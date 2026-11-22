@@ -111,6 +111,18 @@ function writeState(db: DB, id: string, state: PlayerState, extra: Partial<typeo
   db.update(schema.lessonSessions).set({ state, updatedAt: new Date().toISOString(), ...extra }).where(eq(schema.lessonSessions.id, id)).run();
 }
 
+/** Result key for a queue position (retry-round positions get a "#retry" suffix). */
+function resultKeyAt(state: PlayerState, pos: number): string {
+  const id = state.queue[pos];
+  return state.retryFrom !== null && pos >= state.retryFrom ? `${id}#retry` : id;
+}
+
+/** First queue position whose exercise is not finished (queue.length when all are). */
+function firstUnfinished(state: PlayerState): number {
+  for (let pos = 0; pos < state.queue.length; pos++) if (!state.results[resultKeyAt(state, pos)]?.done) return pos;
+  return state.queue.length;
+}
+
 const MAX_ACTIVE_DELTA = 120;
 
 /** Persist navigation (phase / index) and active study time. */
@@ -119,7 +131,8 @@ export function saveProgress(db: DB, sessionId: string, patch: { phase?: PlayerS
   if (s.status === "completed") return s;
   const state = { ...s.state };
   if (patch.phase && patch.phase !== "summary") state.phase = patch.phase;
-  if (typeof patch.index === "number" && patch.index >= 0 && patch.index <= state.queue.length) state.index = patch.index;
+  // Navigation may revisit answered exercises but never jump past an unanswered one.
+  if (typeof patch.index === "number" && patch.index >= 0 && patch.index <= firstUnfinished(state)) state.index = patch.index;
   const delta = Math.max(0, Math.min(MAX_ACTIVE_DELTA, Math.round(patch.activeSecondsDelta ?? 0)));
   writeState(db, sessionId, state, { activeSeconds: s.activeSeconds + delta });
   return readSession(db, sessionId);
@@ -137,20 +150,47 @@ function evaluateChoice(ex: Exercise, answer: string) {
   };
 }
 
+/**
+ * Record an answer for the current exercise.
+ *
+ * Safe to retry: `attemptNo` (1 for the first try, 2 for the retry/reveal) identifies the
+ * attempt, so a duplicate delivery returns the saved feedback instead of recording again.
+ * Answers are only accepted for the exercise at the current queue position.
+ */
 export async function submitAttempt(
   db: DB, sessionId: string, exerciseId: string, rawAnswer: string, hintsUsed: number, now: Date = new Date(), judge?: AnswerJudge,
+  attemptNo?: number,
 ): Promise<{ feedback: Feedback; state: PlayerState }> {
   const s = readSession(db, sessionId);
-  if (s.status === "completed") throw new HttpError(409, "Session already completed");
+  if (s.status === "completed" || s.state.phase === "summary") throw new HttpError(409, "This lesson is already completed.");
   const row = db.select().from(schema.exercises).where(and(eq(schema.exercises.id, exerciseId), eq(schema.exercises.lessonId, s.lessonId))).get();
   if (!row) throw new HttpError(404, "Exercise not in this lesson");
   const ex = row.payload as Exercise;
   const answer = String(rawAnswer ?? "").slice(0, 500);
   const state = s.state;
+  if (state.queue[state.index] !== exerciseId) {
+    throw new HttpError(409, "That exercise isn't the current one. Reload the lesson to continue where you left off.");
+  }
   const inRetryRound = state.retryFrom !== null && state.index >= state.retryFrom;
   const resultKey = inRetryRound ? `${exerciseId}#retry` : exerciseId;
   const prev: ExerciseResult = state.results[resultKey] ?? { attempts: 0, hintsUsed: 0, firstVerdict: null, verdict: null, done: false };
   const isChoice = !!ex.options && ex.answerIndex !== undefined;
+
+  // Duplicate deliveries resolve to the attempt already recorded.
+  if (attemptNo !== undefined) {
+    if (attemptNo === prev.attempts && prev.feedback) return { feedback: prev.feedback, state };
+    if (attemptNo !== prev.attempts + 1) throw new HttpError(409, "This answer was already recorded. Reload the lesson to continue.");
+  }
+  if (prev.done) {
+    if (prev.feedback && prev.lastAnswer === answer) return { feedback: prev.feedback, state };
+    throw new HttpError(409, "This exercise is already answered.");
+  }
+  if (isChoice) {
+    const n = Number(answer);
+    if (!/^\d+$/.test(answer.trim()) || n >= (ex.options?.length ?? 0)) throw new HttpError(400, "Choose one of the options.");
+  } else if (!answer.trim()) {
+    throw new HttpError(400, "Type an answer first.");
+  }
 
   let feedback: Feedback;
   if (isChoice) {
@@ -161,7 +201,10 @@ export async function submitAttempt(
       mistakeTag: r.verdict === "incorrect" ? ex.skillId : undefined,
     };
   } else {
-    const r = evaluateAnswer({ answer, accepted: ex.accepted, confusables: ex.confusables, defaultTag: ex.skillId });
+    const r = evaluateAnswer({
+      answer, accepted: ex.accepted, confusables: ex.confusables, defaultTag: ex.skillId,
+      unchangedFrom: ex.type === "transformation" ? ex.prompt : undefined,
+    });
     feedback = {
       verdict: r.verdict, correctAnswer: r.verdict === "incorrect" ? r.closest : r.closest, explanation: ex.explanation, note: r.note,
       rule: ex.rule, translation: ex.translation, answerMarks: r.answerMarks, expectedMarks: r.expectedMarks, canRetry: false,
@@ -191,8 +234,13 @@ export async function submitAttempt(
   const done = feedback.verdict !== "incorrect" || !feedback.canRetry;
   const today = parisDate(now);
 
-  db.transaction((tx) => {
+  const recorded = db.transaction((tx) => {
     const t = tx as unknown as DB;
+    // The AI judge is awaited above, so re-check that no other request changed this exercise meanwhile.
+    const cur = readSession(t, sessionId);
+    const curPrev = cur.state.results[resultKey];
+    if (cur.status === "completed" || cur.state.index !== state.index || (curPrev?.attempts ?? 0) !== prev.attempts) return false;
+    const fresh = cur.state;
     t.insert(schema.exerciseAttempts).values({
       sessionId, exerciseId, skillId: ex.skillId, itemKey: ex.itemKey, exerciseType: ex.type, answer: isChoice ? (ex.options?.[Number(answer)] ?? answer) : answer,
       expected: feedback.correctAnswer, verdict: feedback.verdict, isCorrect: feedback.verdict !== "incorrect", isFirst,
@@ -205,17 +253,32 @@ export async function submitAttempt(
       attempts, hintsUsed: Math.max(prev.hintsUsed, hintsUsed),
       firstVerdict: prev.firstVerdict ?? feedback.verdict, verdict: feedback.verdict, done, lastAnswer: answer, feedback,
     };
-    state.results[resultKey] = result;
-    state.phase = "exercise";
-    writeState(t, sessionId, state);
+    fresh.results[resultKey] = result;
+    fresh.phase = "exercise";
+    writeState(t, sessionId, fresh);
+    return true;
   });
-  return { feedback, state: readSession(db, sessionId).state };
+  const latest = readSession(db, sessionId).state;
+  if (!recorded) {
+    const saved = latest.results[resultKey]?.feedback;
+    if (saved) return { feedback: saved, state: latest };
+    throw new HttpError(409, "This lesson changed in another tab. Reload to continue.");
+  }
+  return { feedback, state: latest };
 }
 
-/** Move to the next exercise; appends a retry round for missed items when the main queue ends. */
-export function advance(db: DB, sessionId: string) {
+/**
+ * Move to the next exercise; appends a retry round for missed items when the main queue ends.
+ * `fromIndex` is the position the caller is leaving: a repeated request for a position the
+ * session has already left is a no-op, so double clicks or retried requests never skip a question.
+ */
+export function advance(db: DB, sessionId: string, fromIndex?: number) {
   const s = readSession(db, sessionId);
   const state = s.state;
+  if (s.status === "completed" || state.phase === "summary") return state;
+  if (fromIndex !== undefined && fromIndex !== state.index) return state;
+  if (state.index >= state.queue.length) return state;
+  if (!state.results[resultKeyAt(state, state.index)]?.done) throw new HttpError(409, "Answer this exercise before moving on.");
   const next = state.index + 1;
   if (next >= state.queue.length && state.retryFrom === null) {
     const missed = state.queue.filter((id) => state.results[id]?.firstVerdict === "incorrect");
@@ -230,12 +293,24 @@ export function advance(db: DB, sessionId: string) {
   return state;
 }
 
+/**
+ * Finish a session. Safe to retry: a completed session returns its saved summary unchanged.
+ * Every queued exercise (including the retry round) must be answered first, and the skill
+ * updates, primary-lesson credit and the completed status are written in one transaction.
+ */
 export function completeSession(db: DB, sessionId: string, now: Date = new Date()): SessionSummary {
+  return db.transaction((tx) => completeInTx(tx as unknown as DB, sessionId, now));
+}
+
+function completeInTx(db: DB, sessionId: string, now: Date): SessionSummary {
   const s = readSession(db, sessionId);
   if (s.status === "completed" && s.summary) return s.summary as SessionSummary;
+  const state = s.state;
+  if (state.index < state.queue.length || firstUnfinished(state) < state.queue.length) {
+    throw new HttpError(409, "Finish every exercise before completing the lesson.");
+  }
   const lesson = getLesson(db, s.lessonId)!;
   const exercises = getLessonExercises(db, s.lessonId);
-  const state = s.state;
   const today = parisDate(now);
   const scored = exercises.filter((e) => state.results[e.id]?.firstVerdict);
   const firstOk = scored.filter((e) => state.results[e.id].firstVerdict !== "incorrect").length;
@@ -248,11 +323,8 @@ export function completeSession(db: DB, sessionId: string, now: Date = new Date(
     bySkill.set(e.skillId, cur);
   }
 
-  db.transaction((tx) => {
-    const t = tx as unknown as DB;
-    for (const [sid, v] of bySkill) applySkillReview(t, sid, v.correct / v.total, today);
-    if (lesson.kind === "daily" || lesson.kind === "practice") incrementPrimary(t, lesson.primarySkillId, now.toISOString());
-  });
+  for (const [sid, v] of bySkill) applySkillReview(db, sid, v.correct / v.total, today);
+  if (lesson.kind === "daily" || lesson.kind === "practice") incrementPrimary(db, lesson.primarySkillId, now.toISOString());
 
   const after = loadProgress(db)[lesson.primarySkillId];
   const mistakes = scored.filter((e) => state.results[e.id].firstVerdict === "incorrect").map((e) => {

@@ -87,7 +87,9 @@ export const BANK: Record<string, SkillBank> = {
       s("b-s2", "J'habite à Lyon.", "I live in Lyon.", { distractors: ["en"] }),
       s("b-s3", "Je suis anglais.", "I'm English.", { alts: ["Je suis anglaise."], distractors: ["un"] }),
       s("b-s4", "Je travaille dans un bureau.", "I work in an office.", { distractors: ["travailles"] }),
-      s("b-s5", "Bonjour, ça va ?", "Hello, how are you?", { alts: ["Salut, ça va ?", "Bonjour, comment ça va ?"] }),
+      s("b-s5", "Bonjour, ça va ?", "Hello, how are you?", {
+        alts: ["Salut, ça va ?", "[Bonjour|Salut], comment ça va ?", "Bonjour, comment allez-vous ?", "[Bonjour|Salut], comment vas-tu ?"],
+      }),
       s("b-s6", "Je parle anglais et un peu français.", "I speak English and a little French.", { alts: ["Je parle anglais et un peu de français."] }),
       s("b-s7", "Merci beaucoup, bonne journée !", "Thank you very much, have a good day!"),
       s("b-s8", "Le café est très bon.", "The coffee is very good.", { distractors: ["bien"] }),
@@ -690,7 +692,13 @@ export const BANK: Record<string, SkillBank> = {
     sentences: [
       s("si-s1", "Je voudrais prendre rendez-vous, s'il vous plaît.", "I'd like to make an appointment, please.", { distractors: ["faire"] }),
       s("si-s2", "Il y a un problème avec le chauffage.", "There is a problem with the heating."),
-      s("si-s3", "Vous pouvez parler plus lentement ?", "Can you speak more slowly?", { alts: ["Pouvez-vous parler plus lentement ?", "Est-ce que vous pouvez parler plus lentement ?"] }),
+      s("si-s3", "Vous pouvez parler plus lentement ?", "Can you speak more slowly?", {
+        alts: [
+          "[Pouvez-vous|Pourriez-vous|Vous pourriez] parler plus lentement(, s'il vous plaît) ?",
+          "Vous pouvez parler plus lentement, s'il vous plaît ?",
+          "Est-ce que vous [pouvez|pourriez] parler plus lentement(, s'il vous plaît) ?",
+        ],
+      }),
       s("si-s4", "L'addition, s'il vous plaît.", "The bill, please."),
       s("si-s5", "Je suis disponible lundi matin.", "I'm available on Monday morning."),
     ],

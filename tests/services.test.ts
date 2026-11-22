@@ -6,10 +6,9 @@ import { loadPlannerInput, loadProgress } from "@/lib/services/progress";
 import { exportProgress, importProgress, resetProgress } from "@/lib/services/backup";
 import { getDashboard, getProgressData } from "@/lib/services/stats";
 import { endConversation, sendMessage, startConversation } from "@/lib/services/conversations";
-import type { Exercise } from "@/lib/content/types";
+import { answerUntil, right } from "./helpers";
 
 const at = (d: string, hhmmUtc = "19:00") => new Date(`${d}T${hhmmUtc}:00Z`);
-const right = (e: Exercise) => (e.options ? String(e.answerIndex) : e.accepted[0]);
 
 async function playLesson(db: ReturnType<typeof createDb>, date: Date, wrongEvery = 0) {
   const lesson = await getOrCreateDailyLesson(db, date);
@@ -70,19 +69,22 @@ describe("daily lessons & session persistence", () => {
     const exercises = getLessonExercises(db, lesson.id);
     const typed = exercises.find((e) => !e.options)!;
     const s = getOrStartSession(db, lesson.id);
-    const idx = s.state.queue.indexOf(typed.id);
-    saveProgress(db, s.id, { index: idx });
+    await answerUntil(db, s.id, exercises, typed.id);
     const r1 = await submitAttempt(db, s.id, typed.id, "zzz", 0);
     expect(r1.feedback.canRetry).toBe(true);
     const r2 = await submitAttempt(db, s.id, typed.id, "zzz", 1);
     expect(r2.feedback.canRetry).toBe(false);
     expect(r2.state.results[typed.id].done).toBe(true);
     // Only the first attempt counts toward mastery.
-    const firsts = db.select().from(schema.exerciseAttempts).all().filter((a) => a.isFirst);
+    const firsts = db.select().from(schema.exerciseAttempts).all().filter((a) => a.isFirst && a.exerciseId === typed.id);
     expect(firsts).toHaveLength(1);
-    // Fast-forward to the end of the queue → retry round appended.
-    saveProgress(db, s.id, { index: s.state.queue.length - 1 });
-    const st = advance(db, s.id);
+    // Answer the rest of the main queue → retry round appended.
+    let st = advance(db, s.id);
+    while (st.retryFrom === null) {
+      const ex = exercises.find((e) => e.id === st.queue[st.index])!;
+      await submitAttempt(db, s.id, ex.id, right(ex), 0);
+      st = advance(db, s.id);
+    }
     expect(st.retryFrom).toBe(s.state.queue.length);
     expect(st.queue.slice(st.retryFrom!)).toContain(typed.id);
   });

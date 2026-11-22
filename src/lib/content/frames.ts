@@ -77,10 +77,14 @@ export const FRAMES: Record<string, Frame[]> = {
   entrer: [{ fr: "dans le magasin", en: "the shop" }],
 };
 
-/** Convert a complement to its negative partitive form: une pomme -> de pomme. */
+/**
+ * Convert a complement to its negative form: une pomme -> de pomme, de l'eau -> d'eau.
+ * Determiners must match as whole words ("un" must not match the start of "une").
+ */
 export function negateComplement(fr: string): string {
-  const m = fr.match(/^(un|une|des|du|de la|de l')\s?(.*)$/);
+  const m = fr.match(/^(?:(?:une|un|des|du|de la)\s+|de l')(\S.*)$/);
   if (!m) return fr;
-  const rest = m[2];
-  return /^[aeiouyéèêàâh]/i.test(rest) ? `d'${rest}` : `de ${rest}`;
+  const rest = m[1];
+  // No elision before y + vowel (pas de yoga). None of the frames start with an h aspiré.
+  return /^[aeiouéèêàâîïôûh]/i.test(rest) ? `d'${rest}` : `de ${rest}`;
 }
