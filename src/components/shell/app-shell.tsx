@@ -1,4 +1,5 @@
 "use client";
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, BookOpenText, History, Home, MessagesSquare, Settings } from "lucide-react";
@@ -19,8 +20,23 @@ function isActive(path: string, href: string) {
   return href === "/" ? path === "/" : path === href || path.startsWith(href + "/");
 }
 
+const LAST_PAGE = "pap:last-page";
+
+/** The last main page visited in this tab (where a lesson's Back button returns to). */
+export function lastMainPage(): string {
+  try {
+    const p = sessionStorage.getItem(LAST_PAGE);
+    return p && p.startsWith("/") && !p.startsWith("//") ? p : "/";
+  } catch {
+    return "/";
+  }
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
+  React.useEffect(() => {
+    try { sessionStorage.setItem(LAST_PAGE, window.location.pathname + window.location.search); } catch { /* storage blocked */ }
+  }, [path]);
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[248px_1fr]">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-surface focus:px-3 focus:py-2">

@@ -75,12 +75,15 @@ export interface TodayCard {
 export async function todayCard(db: DB, now: Date): Promise<TodayCard> {
   const { lesson, plan } = await previewToday(db, now);
   if (!lesson) return { lesson: null, plan, status: "not_started", progress: 0, sessionId: null, exerciseCount: 0 };
-  const sess = await db.select().from(schema.lessonSessions).where(eq(schema.lessonSessions.lessonId, lesson.id)).orderBy(desc(schema.lessonSessions.startedAt)).get();
-  const count = (await db.select({ n: sql<number>`count(*)` }).from(schema.exercises).where(eq(schema.exercises.lessonId, lesson.id)).get())?.n ?? 0;
+  const [sess, countRow, completedAny] = await Promise.all([
+    db.select().from(schema.lessonSessions).where(eq(schema.lessonSessions.lessonId, lesson.id)).orderBy(desc(schema.lessonSessions.startedAt)).get(),
+    db.select({ n: sql<number>`count(*)` }).from(schema.exercises).where(eq(schema.exercises.lessonId, lesson.id)).get(),
+    db.select({ id: schema.lessonSessions.id }).from(schema.lessonSessions)
+      .where(and(eq(schema.lessonSessions.lessonId, lesson.id), eq(schema.lessonSessions.status, "completed"))).get(),
+  ]);
+  const count = countRow?.n ?? 0;
   if (!sess) return { lesson, plan, status: "not_started", progress: 0, sessionId: null, exerciseCount: Number(count) };
   const state = sess.state as PlayerState;
-  const completedAny = await db.select({ id: schema.lessonSessions.id }).from(schema.lessonSessions)
-    .where(and(eq(schema.lessonSessions.lessonId, lesson.id), eq(schema.lessonSessions.status, "completed"))).get();
   return {
     lesson, plan,
     status: completedAny ? "completed" : "in_progress",
@@ -90,18 +93,35 @@ export async function todayCard(db: DB, now: Date): Promise<TodayCard> {
   };
 }
 
+/** Whether today's daily lesson has been completed (one query; the app layout needs only this). */
+export async function todayDone(db: DB, now: Date = new Date()): Promise<boolean> {
+  const row = await db.select({ id: schema.lessonSessions.id }).from(schema.lessonSessions)
+    .innerJoin(schema.generatedLessons, eq(schema.generatedLessons.id, schema.lessonSessions.lessonId))
+    .where(and(eq(schema.generatedLessons.dailyKey, parisDate(now)), eq(schema.lessonSessions.status, "completed"))).get();
+  return !!row;
+}
+
 export async function getDashboard(db: DB, now: Date = new Date()) {
   const today = parisDate(now);
-  const settings = await getSettings(db);
-  const progress = await loadProgress(db);
+  const weekStart = startOfWeek(today);
+  // Independent reads run together: on a remote database each one is a network round trip.
+  const [settings, progress, dates, card, act, dueBySkill, open, recentMistakes] = await Promise.all([
+    getSettings(db),
+    loadProgress(db),
+    loadStudyDates(db),
+    todayCard(db, now),
+    activityByDate(db, weekStart, addDays(weekStart, 6)),
+    db.select({ skillId: schema.reviewSchedule.skillId, n: sql<number>`count(*)` }).from(schema.reviewSchedule)
+      .where(lte(schema.reviewSchedule.dueDate, today)).groupBy(schema.reviewSchedule.skillId).all(),
+    // Continue where you left off: latest unfinished session.
+    db.select({ s: schema.lessonSessions, l: schema.generatedLessons }).from(schema.lessonSessions)
+      .innerJoin(schema.generatedLessons, eq(schema.generatedLessons.id, schema.lessonSessions.lessonId))
+      .where(eq(schema.lessonSessions.status, "in_progress")).orderBy(desc(schema.lessonSessions.updatedAt)).limit(1).get(),
+    loadRecentMistakes(db, today),
+  ]);
   const frontier = frontierSkill({ progress, lang: db.lang });
   const SKILLS = courseSkills(db.lang);
-  const dates = await loadStudyDates(db);
   const streak = computeStreak(dates, today);
-  const card = await todayCard(db, now);
-
-  const weekStart = startOfWeek(today);
-  const act = await activityByDate(db, weekStart, addDays(weekStart, 6));
   const week = Array.from({ length: 7 }, (_, i) => {
     const date = addDays(weekStart, i);
     const a = act.get(date);
@@ -118,8 +138,6 @@ export async function getDashboard(db: DB, now: Date = new Date()) {
     .sort((a, b) => ((progress[b.id]?.lastPracticedAt ?? "") > (progress[a.id]?.lastPracticedAt ?? "") ? 1 : -1))
     .slice(0, 4)
     .map((s) => ({ id: s.id, title: s.title, mastery: progress[s.id]!.mastery }));
-  const dueBySkill = await db.select({ skillId: schema.reviewSchedule.skillId, n: sql<number>`count(*)` }).from(schema.reviewSchedule)
-    .where(lte(schema.reviewSchedule.dueDate, today)).groupBy(schema.reviewSchedule.skillId).all();
   const dueMap = new Map(dueBySkill.map((d) => [d.skillId, Number(d.n)]));
   const needsReview = practiced
     .map((s) => ({ id: s.id, title: s.title, mastery: effectiveMastery(progress[s.id]!.mastery, progress[s.id]!.lastPracticedAt, today), due: dueMap.get(s.id) ?? 0 }))
@@ -128,10 +146,6 @@ export async function getDashboard(db: DB, now: Date = new Date()) {
     .slice(0, 4);
   const dueCount = [...dueMap.values()].reduce((a, b) => a + b, 0);
 
-  // Continue where you left off: latest unfinished session.
-  const open = await db.select({ s: schema.lessonSessions, l: schema.generatedLessons }).from(schema.lessonSessions)
-    .innerJoin(schema.generatedLessons, eq(schema.generatedLessons.id, schema.lessonSessions.lessonId))
-    .where(eq(schema.lessonSessions.status, "in_progress")).orderBy(desc(schema.lessonSessions.updatedAt)).limit(1).get();
   const resume = open
     ? { lessonId: open.l.id, title: open.l.title, kind: open.l.kind, date: open.l.lessonDate,
         progress: (open.s.state as PlayerState).queue.length ? (open.s.state as PlayerState).index / (open.s.state as PlayerState).queue.length : 0 }
@@ -144,7 +158,7 @@ export async function getDashboard(db: DB, now: Date = new Date()) {
     const sessions = await db.select({ title: schema.generatedLessons.title, score: schema.lessonSessions.score }).from(schema.lessonSessions)
       .innerJoin(schema.generatedLessons, eq(schema.generatedLessons.id, schema.lessonSessions.lessonId))
       .where(and(eq(schema.lessonSessions.studyDate, lastDay), eq(schema.lessonSessions.status, "completed"))).all();
-    const mistakes = (await loadRecentMistakes(db, today)).filter((m) => m.lastDate === lastDay).sort((a, b) => b.count - a.count);
+    const mistakes = recentMistakes.filter((m) => m.lastDate === lastDay).sort((a, b) => b.count - a.count);
     const scores = sessions.map((s) => s.score).filter((x): x is number => x !== null);
     lastSession = {
       date: lastDay,
@@ -178,23 +192,42 @@ export type DashboardData = Awaited<ReturnType<typeof getDashboard>>;
 
 export async function getProgressData(db: DB, now: Date = new Date()) {
   const today = parisDate(now);
-  const progress = await loadProgress(db);
-  const dates = await loadStudyDates(db);
+  // Heatmap: last 26 weeks, Monday-aligned. The monthly chart (last 180 days) reuses the same activity query.
+  const heatStart = addDays(startOfWeek(today), -25 * 7);
+  const monthStart = addDays(today, -180);
+  const actStart = heatStart < monthStart ? heatStart : monthStart;
+  // Independent reads run together: on a remote database each one is a network round trip.
+  const [progress, dates, totalsRow, convTotalsRow, act, accuracyDesc, mistakeRows, troubleRows, reviewed] = await Promise.all([
+    loadProgress(db),
+    loadStudyDates(db),
+    db.select({
+      n: sql<number>`sum(case when ${schema.lessonSessions.status} = 'completed' then 1 else 0 end)`,
+      secs: sql<number>`coalesce(sum(${schema.lessonSessions.activeSeconds}), 0)`,
+      lessons: sql<number>`count(distinct case when ${schema.lessonSessions.status} = 'completed' then ${schema.lessonSessions.lessonId} end)`,
+    }).from(schema.lessonSessions).get(),
+    db.select({
+      n: sql<number>`sum(case when ${schema.conversationSessions.status} = 'completed' then 1 else 0 end)`,
+      secs: sql<number>`coalesce(sum(${schema.conversationSessions.activeSeconds}), 0)`,
+    }).from(schema.conversationSessions).get(),
+    activityByDate(db, actStart, today),
+    db.select({
+      date: schema.exerciseAttempts.studyDate,
+      total: sql<number>`count(*)`,
+      ok: sql<number>`sum(case when ${schema.exerciseAttempts.isCorrect} then 1 else 0 end)`,
+    }).from(schema.exerciseAttempts).where(eq(schema.exerciseAttempts.isFirst, true))
+      .groupBy(schema.exerciseAttempts.studyDate).orderBy(desc(schema.exerciseAttempts.studyDate)).limit(30).all(),
+    db.select({ tag: schema.exerciseAttempts.mistakeTag, n: sql<number>`count(*)` }).from(schema.exerciseAttempts)
+      .where(and(isNotNull(schema.exerciseAttempts.mistakeTag), sql`${schema.exerciseAttempts.mistakeTag} != 'blank'`))
+      .groupBy(schema.exerciseAttempts.mistakeTag).orderBy(desc(sql`count(*)`)).limit(6).all(),
+    db.select().from(schema.reviewSchedule)
+      .where(and(sql`${schema.reviewSchedule.lapses} > 0`, sql`${schema.reviewSchedule.itemType} != 'skill'`))
+      .orderBy(desc(schema.reviewSchedule.lapses), schema.reviewSchedule.ease).limit(6).all(),
+    db.select({ type: schema.reviewSchedule.itemType, n: sql<number>`count(*)` }).from(schema.reviewSchedule).groupBy(schema.reviewSchedule.itemType).all(),
+  ]);
+  const totals = totalsRow!;
+  const convTotals = convTotalsRow!;
   const streak: StreakInfo = computeStreak(dates, today);
 
-  const totals = (await db.select({
-    n: sql<number>`sum(case when ${schema.lessonSessions.status} = 'completed' then 1 else 0 end)`,
-    secs: sql<number>`coalesce(sum(${schema.lessonSessions.activeSeconds}), 0)`,
-    lessons: sql<number>`count(distinct case when ${schema.lessonSessions.status} = 'completed' then ${schema.lessonSessions.lessonId} end)`,
-  }).from(schema.lessonSessions).get())!;
-  const convTotals = (await db.select({
-    n: sql<number>`sum(case when ${schema.conversationSessions.status} = 'completed' then 1 else 0 end)`,
-    secs: sql<number>`coalesce(sum(${schema.conversationSessions.activeSeconds}), 0)`,
-  }).from(schema.conversationSessions).get())!;
-
-  // Heatmap: last 26 weeks, Monday-aligned.
-  const heatStart = addDays(startOfWeek(today), -25 * 7);
-  const act = await activityByDate(db, heatStart, today);
   const heatmap = Array.from({ length: 26 * 7 }, (_, i) => {
     const date = addDays(heatStart, i);
     const a = act.get(date);
@@ -213,10 +246,8 @@ export async function getProgressData(db: DB, now: Date = new Date()) {
     return { week: start, minutes: Math.round(secs / 60), sessions };
   });
 
-  const monthStart = addDays(today, -180);
-  const monthAct = await activityByDate(db, monthStart, today);
   const months = new Map<string, number>();
-  for (const [d, a] of monthAct) months.set(d.slice(0, 7), (months.get(d.slice(0, 7)) ?? 0) + a.seconds);
+  for (const [d, a] of act) if (d >= monthStart) months.set(d.slice(0, 7), (months.get(d.slice(0, 7)) ?? 0) + a.seconds);
   const monthly = Array.from({ length: 6 }, (_, i) => {
     const [y, m] = today.split("-").map(Number);
     const dt = new Date(Date.UTC(y, m - 1 - (5 - i), 1));
@@ -224,25 +255,9 @@ export async function getProgressData(db: DB, now: Date = new Date()) {
     return { month: key, minutes: Math.round((months.get(key) ?? 0) / 60) };
   });
 
-  const accuracyRows = (await db.select({
-    date: schema.exerciseAttempts.studyDate,
-    total: sql<number>`count(*)`,
-    ok: sql<number>`sum(case when ${schema.exerciseAttempts.isCorrect} then 1 else 0 end)`,
-  }).from(schema.exerciseAttempts).where(eq(schema.exerciseAttempts.isFirst, true))
-    .groupBy(schema.exerciseAttempts.studyDate).orderBy(desc(schema.exerciseAttempts.studyDate)).limit(30).all()).reverse();
-  const accuracy = accuracyRows.map((r) => ({ date: r.date, accuracy: Number(r.ok) / Number(r.total), answers: Number(r.total) }));
-
-  const mistakeRows = await db.select({ tag: schema.exerciseAttempts.mistakeTag, n: sql<number>`count(*)` }).from(schema.exerciseAttempts)
-    .where(and(isNotNull(schema.exerciseAttempts.mistakeTag), sql`${schema.exerciseAttempts.mistakeTag} != 'blank'`))
-    .groupBy(schema.exerciseAttempts.mistakeTag).orderBy(desc(sql`count(*)`)).limit(6).all();
+  const accuracy = [...accuracyDesc].reverse().map((r) => ({ date: r.date, accuracy: Number(r.ok) / Number(r.total), answers: Number(r.total) }));
   const mistakes = mistakeRows.map((r) => ({ tag: r.tag!, label: mistakeLabel(r.tag!), count: Number(r.n) }));
-
-  const troubleItems = (await db.select().from(schema.reviewSchedule)
-    .where(and(sql`${schema.reviewSchedule.lapses} > 0`, sql`${schema.reviewSchedule.itemType} != 'skill'`))
-    .orderBy(desc(schema.reviewSchedule.lapses), schema.reviewSchedule.ease).limit(6).all())
-    .map((r) => ({ label: r.label, lapses: r.lapses, skill: getSkill(r.skillId).short, due: r.dueDate }));
-
-  const reviewed = await db.select({ type: schema.reviewSchedule.itemType, n: sql<number>`count(*)` }).from(schema.reviewSchedule).groupBy(schema.reviewSchedule.itemType).all();
+  const troubleItems = troubleRows.map((r) => ({ label: r.label, lapses: r.lapses, skill: getSkill(r.skillId).short, due: r.dueDate }));
   const reviewedMap = Object.fromEntries(reviewed.map((r) => [r.type, Number(r.n)]));
 
   const skills = orderedSkills(db.lang).map((s) => {
@@ -303,8 +318,11 @@ function tipFor(tag: string): string {
 export type ProgressData = Awaited<ReturnType<typeof getProgressData>>;
 
 export async function getHistory(db: DB) {
-  const lessons = await db.select().from(schema.generatedLessons).orderBy(desc(schema.generatedLessons.createdAt)).limit(200).all();
-  const sessions = await db.select().from(schema.lessonSessions).all();
+  const [lessons, sessions, conversations] = await Promise.all([
+    db.select().from(schema.generatedLessons).orderBy(desc(schema.generatedLessons.createdAt)).limit(200).all(),
+    db.select().from(schema.lessonSessions).all(),
+    db.select().from(schema.conversationSessions).orderBy(desc(schema.conversationSessions.createdAt)).limit(100).all(),
+  ]);
   const byLesson = new Map<string, typeof sessions>();
   for (const s of sessions) byLesson.set(s.lessonId, [...(byLesson.get(s.lessonId) ?? []), s]);
   const items = lessons.map((l) => {
@@ -316,7 +334,6 @@ export async function getHistory(db: DB) {
       score: done[0]?.score ?? null, minutes: Math.round(ss.reduce((a, s) => a + s.activeSeconds, 0) / 60),
     };
   }).filter((l) => l.status !== "not_started" || l.kind === "daily");
-  const conversations = await db.select().from(schema.conversationSessions).orderBy(desc(schema.conversationSessions.createdAt)).limit(100).all();
   return { lessons: items, conversations };
 }
 

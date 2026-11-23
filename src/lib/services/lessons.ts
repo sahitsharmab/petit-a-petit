@@ -87,9 +87,8 @@ export async function getDailyLesson(db: DB, date: string): Promise<LessonRecord
 /** What today's lesson will be (without creating it) — for the dashboard. */
 export async function previewToday(db: DB, now: Date = new Date()): Promise<{ lesson: LessonRecord | null; plan: LessonPlan }> {
   const today = parisDate(now);
-  const lesson = await getDailyLesson(db, today);
-  const plan = planDailyLesson(await loadPlannerInput(db, today));
-  return { lesson, plan };
+  const [lesson, input] = await Promise.all([getDailyLesson(db, today), loadPlannerInput(db, today)]);
+  return { lesson, plan: planDailyLesson(input) };
 }
 
 /** In-flight creations per database (each learner has their own). */

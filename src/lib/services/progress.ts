@@ -122,10 +122,12 @@ export async function loadRecentMistakes(db: DB, today: string): Promise<RecentM
 }
 
 export async function loadStudyDates(db: DB): Promise<string[]> {
-  const lessons = await db.selectDistinct({ d: schema.lessonSessions.studyDate }).from(schema.lessonSessions)
-    .where(eq(schema.lessonSessions.status, "completed")).all();
-  const convos = await db.selectDistinct({ d: schema.conversationSessions.studyDate }).from(schema.conversationSessions)
-    .where(eq(schema.conversationSessions.status, "completed")).all();
+  const [lessons, convos] = await Promise.all([
+    db.selectDistinct({ d: schema.lessonSessions.studyDate }).from(schema.lessonSessions)
+      .where(eq(schema.lessonSessions.status, "completed")).all(),
+    db.selectDistinct({ d: schema.conversationSessions.studyDate }).from(schema.conversationSessions)
+      .where(eq(schema.conversationSessions.status, "completed")).all(),
+  ]);
   return [...new Set([...lessons, ...convos].map((r) => r.d))].sort();
 }
 
@@ -155,21 +157,27 @@ function getVerbSafe(v: string) {
 }
 
 export async function loadPlannerInput(db: DB, today: string): Promise<PlannerInput> {
-  const dueItems = (await db.select().from(schema.reviewSchedule).where(lte(schema.reviewSchedule.dueDate, today)).all())
+  // Independent reads run together: on a remote database each one is a network round trip.
+  const [dueRows, dates, daily, progress, recentMistakes] = await Promise.all([
+    db.select().from(schema.reviewSchedule).where(lte(schema.reviewSchedule.dueDate, today)).all(),
+    loadStudyDates(db),
+    db.select({ week: schema.generatedLessons.weekNumber, n: sql<number>`count(*)` }).from(schema.generatedLessons)
+      .where(and(eq(schema.generatedLessons.kind, "daily"), sql`${schema.generatedLessons.lessonDate} < ${today}`))
+      .groupBy(schema.generatedLessons.weekNumber).all(),
+    loadProgress(db),
+    loadRecentMistakes(db, today),
+  ]);
+  const dueItems = dueRows
     .map((r) => ({ itemKey: r.itemKey, skillId: r.skillId, label: r.label, dueDate: r.dueDate, ease: r.ease, lapses: r.lapses }))
     .filter((r) => langOfSkill(r.skillId) === db.lang && r.skillId in SKILL_BY_ID);
-  const before = (await loadStudyDates(db)).filter((d) => d < today);
-  const daily = await db.select({ week: schema.generatedLessons.weekNumber, n: sql<number>`count(*)` }).from(schema.generatedLessons)
-    .where(and(eq(schema.generatedLessons.kind, "daily"), sql`${schema.generatedLessons.lessonDate} < ${today}`))
-    .groupBy(schema.generatedLessons.weekNumber).all();
-  const progress = await loadProgress(db);
+  const before = dates.filter((d) => d < today);
   return {
     today,
     lang: db.lang,
     progress,
     focus: await loadFocusPattern(db, today, progress),
     dueItems,
-    recentMistakes: await loadRecentMistakes(db, today),
+    recentMistakes,
     lastStudyDate: before[before.length - 1] ?? null,
     dailyLessonsByWeek: Object.fromEntries(daily.map((d) => [d.week, Number(d.n)])),
   };

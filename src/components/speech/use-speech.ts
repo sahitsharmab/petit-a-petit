@@ -12,6 +12,30 @@ function pickVoice(voices: SpeechSynthesisVoice[], tag: string): SpeechSynthesis
   return [...matching].sort((a, b) => score(b) - score(a))[0];
 }
 
+/**
+ * Set when the learner pressed play but the device has no voice for the course language.
+ * Speaking anyway would read German (or French) with the default English voice, which teaches
+ * the wrong pronunciation, so nothing plays and <MissingVoiceNotice> explains how to add one.
+ */
+let missingVoice = false;
+const listeners = new Set<() => void>();
+function reportMissingVoice() {
+  if (missingVoice) return;
+  missingVoice = true;
+  listeners.forEach((l) => l());
+}
+export function dismissMissingVoice() {
+  missingVoice = false;
+  listeners.forEach((l) => l());
+}
+export function useMissingVoice(): boolean {
+  return React.useSyncExternalStore(
+    (l) => { listeners.add(l); return () => { listeners.delete(l); }; },
+    () => missingVoice,
+    () => false,
+  );
+}
+
 export function useSpeech(defaultRate = 0.9) {
   const tag = useCourse().speech;
   const [supported, setSupported] = React.useState(false);
@@ -34,9 +58,13 @@ export function useSpeech(defaultRate = 0.9) {
     if (!supported || !text) return;
     const synth = window.speechSynthesis;
     synth.cancel();
+    // Voices can arrive after mount without an event (Safari): look again before giving up.
+    const all = synth.getVoices();
+    const v = voice ?? pickVoice(all, tag);
+    if (!v && all.length) { reportMissingVoice(); return; } // only other-language voices: stay silent
     const u = new SpeechSynthesisUtterance(text.replace(/___/g, "…"));
     u.lang = tag;
-    if (voice) u.voice = voice;
+    if (v) u.voice = v;
     u.rate = rate;
     u.onstart = () => setSpeaking(true);
     u.onend = u.onerror = () => setSpeaking(false);

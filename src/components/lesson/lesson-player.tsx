@@ -3,7 +3,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
-import { AlertTriangle, Lightbulb, Loader2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Lightbulb, Loader2 } from "lucide-react";
 import { EXERCISE_LABEL, type PublicExercise } from "@/lib/content/types";
 import type { LessonIntro as Intro } from "@/lib/services/lessons";
 import type { Feedback, PlayerState, SessionSummary } from "@/lib/services/sessions";
@@ -11,6 +11,7 @@ import { api } from "@/lib/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSpeech } from "../speech/use-speech";
+import { lastMainPage } from "../shell/app-shell";
 import { EMPTY_ANSWER, ExerciseView, answerToString, hasAnswer, isChoiceExercise, type AnswerState } from "./exercise-views";
 import { FeedbackPanel } from "./feedback-panel";
 import { LessonIntro } from "./lesson-intro";
@@ -299,10 +300,7 @@ function Frame({ children, progress, label }: { children: React.ReactNode; progr
     <div className="min-h-dvh">
       <header className="sticky top-0 z-30 border-b border-border/60 bg-background/90 backdrop-blur">
         <div className="mx-auto flex max-w-3xl items-center gap-4 px-4 py-3 sm:px-6">
-          <Link href="/" aria-label="Leave lesson (progress is saved)" title="Progress is saved automatically"
-            className="grid size-9 shrink-0 place-items-center rounded-xl text-muted hover:bg-surface-2 hover:text-ink">
-            <X className="size-5" />
-          </Link>
+          <BackButton />
           <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)} aria-label="Lesson progress">
             <motion.div className="h-full rounded-full bg-primary" initial={false} animate={{ width: `${Math.max(2, progress * 100)}%` }} transition={{ type: "spring", stiffness: 120, damping: 22 }} />
           </div>
@@ -311,6 +309,18 @@ function Frame({ children, progress, label }: { children: React.ReactNode; progr
       </header>
       <div className="px-4 pt-6 sm:px-6 sm:pt-10">{children}</div>
     </div>
+  );
+}
+
+/** Back to the page the lesson was opened from (Today, Learn, History…), or Today when opened directly. */
+function BackButton() {
+  const [href, setHref] = React.useState("/");
+  React.useEffect(() => setHref(lastMainPage()), []);
+  return (
+    <Link href={href} title="Your progress is saved — you can come back any time"
+      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl px-2.5 text-sm font-medium text-muted hover:bg-surface-2 hover:text-ink">
+      <ArrowLeft className="size-4" /> Back
+    </Link>
   );
 }
 
