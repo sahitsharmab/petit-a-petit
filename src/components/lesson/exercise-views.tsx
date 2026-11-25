@@ -7,6 +7,7 @@ import type { PublicExercise } from "@/lib/content/types";
 import type { Feedback } from "@/lib/services/sessions";
 import { cn } from "@/lib/utils";
 import { AccentBar } from "./accent-bar";
+import { GlossedText } from "./glossed-text";
 import { SpeakButton } from "../speech/speak-button";
 import { useSpeechInput } from "../speech/use-speech";
 
@@ -16,9 +17,19 @@ export interface AnswerState {
   tiles: number[];
   /** Listening: the learner revealed the transcript (reported as supported practice). */
   transcriptShown: boolean;
+  /** Word hints opened for this exercise (gloss keys). */
+  revealed: string[];
 }
 
-export const EMPTY_ANSWER: AnswerState = { text: "", choice: null, tiles: [], transcriptShown: false };
+export const EMPTY_ANSWER: AnswerState = { text: "", choice: null, tiles: [], transcriptShown: false, revealed: [] };
+
+/** Prompt text with the exercise's word hints. */
+function Glossed({ p, text, renderPlain }: { p: ViewProps; text: string; renderPlain?: (s: string) => React.ReactNode }) {
+  return (
+    <GlossedText text={text} glosses={p.ex.glosses} revealed={p.answer.revealed} renderPlain={renderPlain}
+      onReveal={(key) => { if (!p.answer.revealed.includes(key)) p.setAnswer({ ...p.answer, revealed: [...p.answer.revealed, key] }); }} />
+  );
+}
 
 export interface ViewProps {
   ex: PublicExercise;
@@ -156,7 +167,7 @@ function MultipleChoiceView(p: ViewProps) {
       <PromptCard>
         <div className="flex items-start gap-3">
           <p className={cn("flex-1 font-display text-[1.45rem] leading-snug text-balance", "sm:text-[1.6rem]")} lang={isFrenchPrompt ? tl : "en"}>
-            {renderBlank(p.ex.prompt)}
+            <Glossed p={p} text={p.ex.prompt} renderPlain={renderBlank} />
           </p>
           {p.ex.audioText && isFrenchPrompt && <SpeakButton onSpeak={() => p.speak(p.ex.audioText!)} />}
         </div>
@@ -190,14 +201,14 @@ function FillBlankView(p: ViewProps) {
     <div className="space-y-5">
       <PromptCard className="py-8">
         <p className="font-display text-[1.55rem] leading-[2.4rem] sm:text-[1.75rem]" lang={tl}>
-          {before}
+          <Glossed p={p} text={before} />
           <input ref={ref} value={p.answer.text} disabled={p.locked} aria-label="Missing word" lang={tl}
             autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
             onChange={(e) => p.setAnswer({ ...p.answer, text: e.target.value })}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); p.onSubmit(); } }}
             style={{ width: `${width}ch` }}
             className={cn("mx-1 inline-block border-b-2 bg-transparent px-1 text-center font-sans text-[1.25rem] font-medium outline-none transition-colors disabled:opacity-100", tone)} />
-          {after}
+          <Glossed p={p} text={after} />
         </p>
         {p.ex.promptNote && <p className="mt-4 text-sm text-muted">{p.ex.promptNote}</p>}
       </PromptCard>
@@ -232,7 +243,7 @@ function TranslationView(p: ViewProps) {
     <div className="space-y-5">
       <PromptCard>
         <p className="text-xs font-medium uppercase tracking-[0.14em] text-subtle">English</p>
-        <p className="mt-2 font-display text-[1.5rem] leading-snug text-balance sm:text-[1.65rem]">{p.ex.prompt}</p>
+        <p className="mt-2 font-display text-[1.5rem] leading-snug text-balance sm:text-[1.65rem]"><Glossed p={p} text={p.ex.prompt} /></p>
       </PromptCard>
       <TextAnswer value={p.answer.text} onChange={(v) => p.setAnswer({ ...p.answer, text: v })} onSubmit={p.onSubmit} locked={p.locked} multiline
         placeholder={course.writePlaceholder} label={`Your ${course.name} translation`} feedback={p.feedback} />
@@ -246,7 +257,7 @@ function TransformationView(p: ViewProps) {
     <div className="space-y-5">
       <PromptCard>
         <div className="flex items-start gap-3">
-          <p className="flex-1 font-display text-[1.5rem] leading-snug" lang={tl}>{p.ex.prompt}</p>
+          <p className="flex-1 font-display text-[1.5rem] leading-snug" lang={tl}><Glossed p={p} text={p.ex.prompt} /></p>
           {p.ex.audioText && <SpeakButton onSpeak={() => p.speak(p.ex.prompt)} />}
         </div>
         {p.ex.promptNote && <p className="mt-2 text-sm text-muted">{p.ex.promptNote}</p>}
@@ -270,7 +281,7 @@ function SentenceBuilderView(p: ViewProps) {
     <div className="space-y-5">
       <PromptCard>
         <p className="text-xs font-medium uppercase tracking-[0.14em] text-subtle">Build this in {course.name}</p>
-        <p className="mt-2 font-display text-[1.45rem] leading-snug text-balance">{p.ex.prompt}</p>
+        <p className="mt-2 font-display text-[1.45rem] leading-snug text-balance"><Glossed p={p} text={p.ex.prompt} /></p>
       </PromptCard>
       <LayoutGroup>
         <div aria-label="Your sentence" aria-live="polite"

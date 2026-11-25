@@ -145,7 +145,8 @@ export function validateBackup(raw: unknown) {
 
 /** Delete statements for every user-data table, children first. */
 function clearQueries(db: DB): BatchItem<"sqlite">[] {
-  return [...NAMES].reverse().map((n) => db.delete(TABLES[n]));
+  // Word-hint history isn't backed up (it rebuilds itself within a few lessons) but goes with the progress it describes.
+  return [db.delete(schema.wordExposure), ...[...NAMES].reverse().map((n) => db.delete(TABLES[n]))];
 }
 
 /** Multi-row inserts in chunks (keeps each statement well under SQLite's variable limit). */

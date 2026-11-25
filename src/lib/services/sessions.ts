@@ -9,6 +9,7 @@ import { langOfSkill } from "@/lib/content/languages";
 import { parisDate } from "@/lib/learning/dates";
 import { HttpError } from "@/lib/http-error";
 import { applyFirstAttempt, applySkillReview, incrementPrimary, loadProgress } from "./progress";
+import { recordWordExposure } from "./words";
 import { getLesson, getLessonExercises, latestSessionForLesson } from "./lessons";
 
 export interface Feedback {
@@ -175,7 +176,7 @@ function evaluateChoice(ex: Exercise, answer: string) {
  */
 export async function submitAttempt(
   db: DB, sessionId: string, exerciseId: string, rawAnswer: string, hintsUsed: number, now: Date = new Date(), judge?: AnswerJudge,
-  attemptNo?: number, assist: { transcriptShown?: boolean } = {},
+  attemptNo?: number, assist: { transcriptShown?: boolean; wordsRevealed?: string[] } = {},
 ): Promise<{ feedback: Feedback; state: PlayerState }> {
   const s = await readSession(db, sessionId);
   if (s.status === "completed" || s.state.phase === "summary") throw new HttpError(409, "This lesson is already completed.");
@@ -267,7 +268,11 @@ export async function submitAttempt(
       mistakeTag: feedback.verdict === "incorrect" ? feedback.mistakeTag ?? null : feedback.verdict === "almost" ? feedback.mistakeTag ?? null : null,
       note: feedback.note ?? null, hintsUsed: assistedHints, judgedBy: feedback.judgedBy, studyDate: today,
     }).run();
-    if (isFirst) await applyFirstAttempt(t, ex, feedback.verdict, assistedHints, today, now.toISOString());
+    if (isFirst) {
+      await applyFirstAttempt(t, ex, feedback.verdict, assistedHints, today, now.toISOString());
+      // Word hints are help with vocabulary, not the tested grammar: they don't count as hints used.
+      await recordWordExposure(t, ex, assist.wordsRevealed ?? [], now.toISOString());
+    }
 
     const result: ExerciseResult = {
       attempts, hintsUsed: Math.max(prev.hintsUsed, hintsUsed),

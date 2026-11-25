@@ -203,6 +203,19 @@ export const aiCredentials = sqliteTable("ai_credentials", {
   updatedAt: text("updated_at").notNull().default(now),
 });
 
+/**
+ * How often the learner has met each hinted word (see lib/content/lexicon.ts). `streak` counts
+ * sightings in a row without opening the hint; at 3 the word counts as known and its hint stops
+ * appearing. Opening the hint resets it. Cleared with progress; not part of backups.
+ */
+export const wordExposure = sqliteTable("word_exposure", {
+  key: text("key").primaryKey(),
+  seen: integer("seen").notNull().default(0),
+  revealed: integer("revealed").notNull().default(0),
+  streak: integer("streak").notNull().default(0),
+  updatedAt: text("updated_at").notNull().default(now),
+});
+
 /** Cache of validated AI outputs keyed by request hash. */
 export const aiCache = sqliteTable("ai_cache", {
   key: text("key").primaryKey(),

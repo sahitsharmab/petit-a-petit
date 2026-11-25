@@ -66,6 +66,19 @@ export interface Exercise {
   allowAiJudge?: boolean;
   source: "local" | "ai";
   meta?: Record<string, string | number | boolean>;
+  /** Tap-to-reveal word hints, added when a lesson is shown (never stored with the exercise). */
+  glosses?: Gloss[];
+}
+
+/** A word hint: `span` is underlined in the prompt; tapping shows `meaning` (and `note`). */
+export interface Gloss {
+  /** Identifies the word for the learner's exposure count, e.g. "de:kind". */
+  key: string;
+  /** The exact text in the prompt to underline. */
+  span: string;
+  meaning: string;
+  /** Dictionary form when it differs, e.g. "das Kind, die Kinder". */
+  note?: string;
 }
 
 /** Exercise as sent to the browser (no answers). */

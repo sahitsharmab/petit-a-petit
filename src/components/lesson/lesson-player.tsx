@@ -147,6 +147,7 @@ export function LessonPlayer({ lesson, exercises, sessionId, initialState, initi
       const res = await api<{ feedback: Feedback; state: PlayerState }>(`/api/sessions/${sessionId}/attempt`, {
         exerciseId: ex.id, answer: answerToString(ex, answer), hintsUsed: hintShown ? 1 : 0, attemptNo: (result?.attempts ?? 0) + 1,
         transcriptShown: ex.type === "listening" && (answer.transcriptShown || !speechSupported),
+        wordsRevealed: answer.revealed,
       });
       setState(res.state);
       setRetrying(false);
@@ -159,6 +160,7 @@ export function LessonPlayer({ lesson, exercises, sessionId, initialState, initi
     await run(async () => {
       const res = await api<{ feedback: Feedback; state: PlayerState }>(`/api/sessions/${sessionId}/attempt`, {
         exerciseId: ex.id, answer: answerToString(ex, answer) || "—", hintsUsed: 1, attemptNo: (result?.attempts ?? 0) + 1,
+        wordsRevealed: answer.revealed,
       });
       setState(res.state);
       setRetrying(false);

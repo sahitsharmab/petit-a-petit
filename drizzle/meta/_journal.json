@@ -15,6 +15,13 @@
       "when": 1795342624212,
       "tag": "0001_ai_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795579736925,
+      "tag": "0002_word_exposure",
+      "breakpoints": true
     }
   ]
 }

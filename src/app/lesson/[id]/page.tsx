@@ -6,6 +6,7 @@ import { toPublic } from "@/lib/content/types";
 import { getLesson, getLessonExercises } from "@/lib/services/lessons";
 import { getOrStartSession, type SessionSummary } from "@/lib/services/sessions";
 import { getSettings } from "@/lib/services/stats";
+import { withGlosses } from "@/lib/services/words";
 import { formatDateLong } from "@/lib/learning/dates";
 import { LessonPlayer } from "@/components/lesson/lesson-player";
 import { CourseProvider } from "@/components/course/course-context";
@@ -28,7 +29,7 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
   const lesson = await lessonFor(id);
   if (!lesson) notFound();
   const [rawExercises, session, settings] = await Promise.all([getLessonExercises(db, id), getOrStartSession(db, id), getSettings(db)]);
-  const exercises = rawExercises.map(toPublic);
+  const exercises = (await withGlosses(db, rawExercises)).map(toPublic);
   const eyebrow = lesson.kind === "daily"
     ? `Week ${lesson.weekNumber} · Day ${lesson.dayNumber} — ${formatDateLong(lesson.lessonDate)}`
     : lesson.kind === "review" ? "Review session" : `Practice · Week ${lesson.weekNumber}`;
