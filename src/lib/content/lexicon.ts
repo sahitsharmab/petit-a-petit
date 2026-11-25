@@ -15,7 +15,7 @@ ami/amis/amie/amies = friend/friends/friend/friends ; un ami, une amie
 appartement/appartements = apartment/apartments/flat/flats ; un appartement
 baguette = baguette ; une baguette
 banque = bank ; la banque
-beaucoup = a lot/lots/much/many
+beaucoup = a lot/lots/much/many/really
 beau/belle/beaux/belles = beautiful/lovely/nice/handsome
 bibliothèque = library ; la bibliothèque
 billet/billets = ticket/tickets ; un billet
@@ -149,13 +149,13 @@ merci = thank you/thanks
 s'il vous plaît/s'il te plaît = please
 désolé/désolée = sorry
 enchanté/enchantée = nice to meet you/pleased to meet you
-lundi = Monday
-mardi = Tuesday
-mercredi = Wednesday
-jeudi = Thursday
-vendredi = Friday
-samedi = Saturday
-dimanche = Sunday
+lundi = Monday/Mondays
+mardi = Tuesday/Tuesdays
+mercredi = Wednesday/Wednesdays
+jeudi = Thursday/Thursdays
+vendredi = Friday/Fridays
+samedi = Saturday/Saturdays
+dimanche = Sunday/Sundays
 deux = two
 trois = three
 cinq = five
@@ -169,6 +169,166 @@ douze = twelve
 quinze = fifteen
 trente = thirty
 cinquante = fifty
+quatre = four
+aide = help ; l'aide (f.)
+un peu = a little/a bit
+journée = day ; la journée
+toute la journée = all day
+infirmière = nurse ; une infirmière
+Monsieur = Mr ; Monsieur
+Madame = Mrs ; Madame
+problème = problem ; un problème
+douche = shower ; la douche
+hôtel = hotel ; un hôtel
+à côté de = next to
+en face de = opposite
+devant = in front of
+sous = under
+lumineux/lumineuse = bright
+contrat = contract ; un contrat
+week-end = weekend ; le week-end
+facilement = easily
+petit-déjeuner = breakfast ; le petit-déjeuner
+à droite = on the right
+après = after
+hier soir = last night
+dernier/dernière = last
+an/ans = year/years ; un an
+temps = time/weather ; le temps
+quelle heure = what time
+bien = well
+`;
+
+/*
+ * Verbs and expressions: "+ dictionary form = English forms = forms in the answer ; note".
+ * The hint shows the dictionary form, never the conjugated answer. "parl*" matches any form
+ * starting with "parl". English prompts only (in the course language the verb is usually the test).
+ */
+const FR_VERBS = `
++ avoir peur (de) = scared of/afraid of/scared/afraid/frightened = peur ; with avoir: j'ai peur de…
++ avoir soif = thirsty = soif ; with avoir: j'ai soif
++ avoir faim = hungry = faim ; with avoir: j'ai faim
++ avoir besoin de = need/needs/needed = besoin ; with avoir: j'ai besoin de…
++ avoir raison = right = raison ; with avoir: tu as raison
++ il fait beau = the weather is nice/weather is nice = beau
++ je voudrais = I'd like/would like = voudr* ; polite form of vouloir
++ prendre rendez-vous = make an appointment = prendre rendez-vous
++ prendre une douche = take a shower = douche
++ prendre le petit-déjeuner = have breakfast = petit-déjeuner
++ il y a … = ago = il y a ; before the time: il y a trois jours
++ depuis = for/since = depuis ; with the present tense: j'apprends depuis six mois
++ ne … plus = anymore/no longer/any left = plus
++ parler = speak/speaks/speaking/spoke/talk/talks/talking = parl*
++ habiter = live/lives/living/lived = habit*
++ travailler = work/works/working/worked = travaill*
++ regarder = watch/watches/watching/watched = regard*
++ manger = eat/eats/eating/ate/eaten = mang*
++ aimer = like/likes/love/loves = aim*
++ chercher = look for/looking for/looks for/looked for = cherch*
++ s'appeler = my name is/name = appel*/appell* ; je m'appelle = my name is
++ appeler = call/calls/calling/called = appel*/appell*
++ aller = go/goes/going/went/gone = vais/vas/va/allons/allez/vont/aller/allé*/ira*/iron*
++ faire = do/does/doing/did/done/make/makes/making/made = fais/fait/faisons/faites/font/faire
++ vouloir = want/wants/wanted = veux/veut/voulons/voulez/veulent/vouloir/voulu
++ pouvoir = can/can't/could = peux/peut/pouvons/pouvez/peuvent/pouvoir/pu
++ devoir = must/have to/has to = dois/doit/devons/devez/doivent/devoir
++ comprendre = understand/understands/understood = compr*
++ savoir = know/knows/knew = sais/sait/savons/savez/savent/savoir/su
++ prendre = take/takes/taking/took/taken = prend*/pren*/pris
++ venir = come/comes/coming/came = vien*/venons/venez/venir/venu*
++ partir = leave/leaves/leaving/left = part*
++ lire = read/reads/reading = lis/lit/lisons/lisez/lisent/lire/lu
++ attendre = wait/waits/waiting/waited = attend*
++ finir = finish/finishes/finished = fini*
++ vendre = sell/sells/selling/sold = vend*
++ choisir = choose/chooses/choosing/chose = chois*
++ se lever = get up/gets up/got up/getting up = lève*/lev*
++ se doucher = shower/showers/showered = douch*
++ se promener = go for a walk/walk = promè*/promen*
++ se coucher = go to bed/goes to bed/went to bed = couch*
++ se réveiller = wake up/wakes up/woke up = réveill*
++ s'habiller = get dressed/gets dressed/dressed = habill*
++ commencer = start/starts/begin/begins = commen*
++ se reposer = rest = repos*
++ visiter = visit/visits/visiting/visited = visit*
++ se retrouver = meet/meets/meeting = retrouv*
++ trouver = find/finds/found = trouv*
++ réserver = book/booked/reserve = réserv*
++ oublier = forget/forgot/forgotten = oubli*
++ voir = see/sees/seeing/saw/seen = vois/voit/voyons/voyez/voient/voir/vu
++ arriver = arrive/arrives/arrived = arriv*
++ rentrer = get home/got home/come home = rentr*
++ apprendre = learn/learns/learning/learnt/learned = appren*/appris
++ pleuvoir = rain/rains/rained/raining = pleut/plu
++ déménager = move/moved = déménag*
++ dormir = sleep/sleeps/slept = dor*
++ envoyer = send/sends/sending/sent = envo*
++ aider = help/helps/helped = aid*
++ rester = stay/stays/staying/stayed = reste/restes/restons/restez/restent/rester/resté*
++ acheter = buy/buys/bought = achè*/achet*
++ coûter = cost/costs = coût*
++ ouvrir = open/opens = ouvr*
++ payer = pay/pays/paid = pay*/pai*
++ signer = sign = sign*
++ répéter = repeat = répèt*/répét*
+`;
+
+const DE_VERBS = `
++ Durst haben = thirsty = Durst ; ich habe Durst
++ Hunger haben = hungry = Hunger ; ich habe Hunger
++ Lust haben = feel like = Lust ; ich habe (keine) Lust
++ recht haben = right = recht ; er hat recht
++ ich hätte gern = I'd like/would like = hätte gern ; polite: ich hätte gern einen Kaffee
++ möchten = I'd like/would like = möchte* ; ich möchte = I'd like
++ gern = like/likes/love to/I'd love to = gern ; after the verb: ich esse gern = I like eating
++ vor … = ago = vor ; before the time, with the dative: vor drei Tagen
++ seit = for/since = seit ; with the present tense: ich lerne seit sechs Monaten
++ mit dem Fahrrad fahren = cycle = Fahrrad
++ wohnen = live/lives/living/lived = wohn*/gewohnt
++ lernen = learn/learns/learning/learnt/learned = lern*/gelernt
++ arbeiten = work/works/working/worked = arbeit*/gearbeitet
++ spielen = play/plays/playing/played = spiel*/gespielt
++ kommen = come/comes/coming/came = komm*/kam*/gekommen
++ trinken = drink/drinks/drinking/drank = trink*/getrunken
++ heißen = my name is/name = heiß* ; ich heiße = my name is
++ sprechen = speak/speaks/speaking/talk/talked/spoke = sprech*/sprich*/gesprochen
++ brauchen = need/needs/needed = brauch*
++ suchen = look for/looking for/looks for = such*/gesucht
++ sehen = see/sees/saw/seen = seh*/sieh*/gesehen
++ lieben = love/loves = lieb*
++ verstehen = understand/understands/understood = versteh*/verstanden
++ kosten = cost/costs = kost*
++ beginnen = start/starts/begin/begins = beginn*/begonnen
++ gehen = go/goes/going/went = geh*/ging*/gegangen
++ fahren = go/goes/going/went/drive/take/taking/travel = fahr*/fähr*/gefahren ; for going by vehicle
++ nehmen = take/takes/taking/took = nehm*/nimm*/genommen
++ sich treffen = meet/meeting = treff*/getroffen
++ bezahlen = pay/pays/paid = bezahl*/zahl*
++ wollen = want/wants/wanted = will/willst/wollen/wollt/wollte*
++ reservieren = book/reserve = reservier*
++ dürfen = allowed/may = darf*/dürf*
++ parken = park = park*
++ anrufen = call/calls/calling/called = ruf*/anruf*/angerufen ; separable: ich rufe dich an
++ lesen = read/reads/reading = les*/lies*/gelesen
++ essen = eat/eats/eating/ate/eaten = ess*/iss*/gegessen
++ schlafen = sleep/sleeps/slept/asleep = schlaf*/schläf*/geschlafen
++ aufstehen = get up/gets up/got up/getting up = steh*/aufsteh*/aufgestanden ; separable: ich stehe um sechs auf
++ ankommen = arrive/arrives/arrived = komm*/ankomm*/angekommen ; separable: der Zug kommt an
++ einkaufen = do the shopping/do our shopping/go shopping/shopping = kauf*/einkauf* ; separable: ich kaufe ein
++ kaufen = buy/buys/bought = kauf*/gekauft
++ frühstücken = have breakfast = frühstück*
++ kochen = cook/cooks/cooking/cooked = koch*/gekocht
++ besuchen = visit/visits/visiting/visited = besuch*
++ bleiben = stay/stays/staying/stayed = bleib*/geblieben
++ schreiben = write/writes/wrote/written = schreib*/geschrieben
++ regnen = rain/rains/raining/rained = regn*/geregnet
++ fliegen = fly/flies/flying/flew = flieg*/geflogen
++ glauben = think/thinks/believe = glaub*
++ wiederholen = repeat = wiederhol*
++ helfen = help/helps/helped = helf*/hilf*/geholfen
++ funktionieren = working/work = funktionier* ; for machines and things
++ gefallen = like/likes = gefäll*/gefall* ; die Stadt gefällt mir = I like the city
++ schmecken = taste/like the taste = schmeck*
 `;
 
 const DE = `
@@ -203,13 +363,13 @@ Brötchen = roll/rolls/bread roll/bread rolls ; das Brötchen
 Bruder/Brüder = brother/brothers ; der Bruder, die Brüder
 Buch/Bücher = book/books ; das Buch, die Bücher
 Büro = office ; das Büro
-Montag = Monday
-Dienstag = Tuesday
-Mittwoch = Wednesday
-Donnerstag = Thursday
-Freitag = Friday
-Samstag = Saturday
-Sonntag = Sunday
+Montag = Monday/Mondays
+Dienstag = Tuesday/Tuesdays
+Mittwoch = Wednesday/Wednesdays
+Donnerstag = Thursday/Thursdays
+Freitag = Friday/Fridays
+Samstag = Saturday/Saturdays
+Sonntag = Sunday/Sundays
 Deutsch = German
 Englisch = English
 Deutschland = Germany
@@ -293,7 +453,7 @@ Reservierung = reservation/booking ; die Reservierung
 rot = red
 Schlüssel = key/keys ; der Schlüssel
 schnell = fast/quickly/quick
-schon = already
+schon = already/ever
 sehr = very
 spät = late
 Stadt = city/town ; die Stadt
@@ -302,7 +462,7 @@ Stuhl/Stühle = chair/chairs ; der Stuhl, die Stühle
 Suppe = soup ; die Suppe
 Supermarkt = supermarket ; der Supermarkt
 Tabletten = tablets/pills ; die Tablette
-Tag/Tage = day/days ; der Tag
+Tag/Tage/Tagen = day/days/days ; der Tag
 Tee = tea ; der Tee
 Termin = appointment ; der Termin
 teuer = expensive
@@ -321,7 +481,7 @@ Wohnung/Wohnungen = flat/flats/apartment/apartments ; die Wohnung
 Zahnarzt = dentist ; der Zahnarzt
 Zeit = time ; die Zeit
 Zeitung = newspaper ; die Zeitung
-Zimmer = room ; das Zimmer
+Zimmer = room/rooms ; das Zimmer
 zuerst = first
 Zug = train ; der Zug
 zusammen = together
@@ -340,6 +500,30 @@ zehn = ten
 elf = eleven
 zwanzig = twenty
 dreißig = thirty
+vier = four
+vierzig = forty
+Herr = Mr ; der Herr
+Frau = Mrs ; die Frau
+geschlossen = closed
+heute Nacht = tonight
+lang = long
+lange = a long time/long
+Alkohol = alcohol ; der Alkohol
+jeden/jede/jedes = every
+gut = well/good
+noch nichts = nothing yet/anything yet
+Sommer = summer ; der Sommer
+nächste/nächsten/nächster = next
+letzte/letzten = last
+um die Ecke = around the corner
+möglich = possible
+Vielen Dank = thank you very much/thanks a lot
+dann = then
+Monat/Monate/Monaten = month/months/months ; der Monat
+sehr gern = I'd love to
+Kein Problem = no problem
+spät dran = running late
+miteinander = to each other/with each other
 `;
 
 export interface LexEntry {
@@ -347,14 +531,22 @@ export interface LexEntry {
   target: string[];
   en: string[];
   note?: string;
+  /** Verbs and expressions: the dictionary form the hint shows instead of the answer's own words. */
+  show?: string;
 }
+
+const list = (s: string) => s.split("/").map((x) => x.trim()).filter(Boolean);
 
 function parse(lang: Lang, table: string): LexEntry[] {
   return table.trim().split("\n").map((line) => {
     const [pair, note] = line.split(" ; ");
+    if (pair.startsWith("+ ")) {
+      const [show, e, t] = pair.slice(2).split(" = ").map((x) => x.trim());
+      return { key: `${lang}:${show.toLowerCase()}`, target: list(t), en: list(e), show, note: note?.trim() };
+    }
     const [t, e] = pair.split(" = ");
-    const target = t.split("/").map((s) => s.trim()).filter(Boolean);
-    return { key: `${lang}:${(note ?? target[0]).toLowerCase()}`, target, en: e.split("/").map((s) => s.trim()).filter(Boolean), note: note?.trim() };
+    const target = list(t);
+    return { key: `${lang}:${(note ?? target[0]).toLowerCase()}`, target, en: list(e), note: note?.trim() };
   });
 }
 
@@ -372,14 +564,16 @@ function frameEntries(): LexEntry[] {
 
 let lexicons: Record<Lang, LexEntry[]> | null = null;
 export function lexicon(lang: Lang): LexEntry[] {
-  lexicons ??= { fr: [...frameEntries(), ...parse("fr", FR)], de: parse("de", DE) };
+  // Plain words come first so they win ties ("work" the noun over "work" the verb).
+  lexicons ??= { fr: [...frameEntries(), ...parse("fr", FR), ...parse("fr", FR_VERBS)], de: [...parse("de", DE), ...parse("de", DE_VERBS)] };
   return lexicons[lang];
 }
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-/** Find a whole-word/phrase occurrence (case-insensitive); returns its position and exact text. */
+/** Find a whole-word/phrase occurrence (case-insensitive); "parl*" matches any word starting "parl". */
 function findForm(text: string, form: string): { index: number; text: string } | null {
-  const m = new RegExp(`(?<![\\p{L}\\d])${esc(form)}(?![\\p{L}\\d])`, "iu").exec(text);
+  const body = form.endsWith("*") ? `${esc(form.slice(0, -1))}\\p{L}*` : esc(form);
+  const m = new RegExp(`(?<![\\p{L}\\d])${body}(?![\\p{L}\\d])`, "iu").exec(text);
   return m ? { index: m.index, text: m[0] } : null;
 }
 function findAny(text: string, forms: string[]) {
@@ -404,7 +598,7 @@ function taughtText(skillId: string): string {
   return t;
 }
 
-const MAX_GLOSSES = 4;
+const MAX_GLOSSES = 5;
 const PATTERN = /\[([^\]|]*)\|[^\]]*\]/g; // accepted answers may hold "[a|b]" choices: keep the first
 
 /**
@@ -423,19 +617,21 @@ export function glossesFor(ex: Exercise): Gloss[] {
   if (ex.type === "translation" || ex.type === "sentence_builder") {
     const answers = ex.accepted.map((a) => a.replace(PATTERN, "$1"));
     for (const e of lex) {
-      if (skip && findAny(skip, e.target)) continue;
+      // Verbs and expressions show only the dictionary form, so even a topic's own words can be hinted.
+      if (!e.show && skip && findAny(skip, e.target)) continue;
       const inPrompt = findAny(ex.prompt, e.en);
       if (!inPrompt) continue;
       const inAnswer = answers.map((a) => findAny(a, e.target)).find(Boolean);
       if (!inAnswer) continue;
-      found.push({ key: e.key, span: inPrompt.text, meaning: inAnswer.text, note: noteFor(e, inAnswer.text), index: inPrompt.index });
+      if (e.show) found.push({ key: e.key, span: inPrompt.text, meaning: e.show, note: e.note, index: inPrompt.index });
+      else found.push({ key: e.key, span: inPrompt.text, meaning: inAnswer.text, note: noteFor(e, inAnswer.text), index: inPrompt.index });
     }
   } else if (ex.type === "fill_blank" || ex.type === "multiple_choice" || ex.type === "transformation") {
     if (ex.type === "multiple_choice" && !ex.prompt.includes("___")) return [];
     const text = ex.type === "fill_blank" && ex.blank ? `${ex.blank.before} ___ ${ex.blank.after}` : ex.prompt;
     const answers = ex.type === "multiple_choice" ? (ex.options ?? []) : ex.type === "fill_blank" ? ex.accepted : [];
     for (const e of lex) {
-      if (skip && findAny(skip, e.target)) continue;
+      if (e.show || (skip && findAny(skip, e.target))) continue;
       if (answers.some((a) => findAny(a, e.target))) continue;
       const m = findAny(text, e.target);
       if (!m) continue;

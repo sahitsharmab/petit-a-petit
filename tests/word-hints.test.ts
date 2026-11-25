@@ -37,6 +37,22 @@ describe("word hints", () => {
     expect(plural.map((x) => [x.span, x.meaning])).toEqual([["filles", "girls"], ["les clés", "the keys"]]);
   });
 
+  it("verbs and expressions reveal the dictionary form, never the conjugated answer", () => {
+    const fr = (prompt: string, answer: string, skillId = "w2-expressions") =>
+      glossesFor(ex({ type: "translation", skillId, prompt, accepted: [answer] })).map((x) => [x.span, x.meaning]);
+    expect(fr("I'm scared of dogs.", "J'ai peur des chiens.")).toEqual([["scared of", "avoir peur (de)"], ["dogs", "chiens"]]);
+    expect(fr("I need help.", "J'ai besoin d'aide.")).toEqual([["need", "avoir besoin de"], ["help", "aide"]]);
+    expect(fr("We are going to the beach.", "Nous allons à la plage.", "w2-aller-faire")).toEqual([["going", "aller"], ["beach", "plage"]]);
+    // The same English verb maps to the German verb the answer actually uses.
+    const de = (prompt: string, answer: string) =>
+      glossesFor(ex({ type: "translation", skillId: "de-w4-prepositions", prompt, accepted: [answer] })).map((x) => [x.span, x.meaning]);
+    expect(de("I take the train to work.", "Ich fahre mit dem Zug zur Arbeit.")[0]).toEqual(["take", "fahren"]);
+    expect(de("I'm taking the bus.", "Ich nehme den Bus.")[0]).toEqual(["taking", "nehmen"]);
+    // Course-language prompts never hint verbs: there the verb is usually what's being tested.
+    expect(glossesFor(ex({ type: "fill_blank", skillId: "w1-er-present", prompt: "Je ___ français.", accepted: ["parle"], blank: { before: "Je ", after: " français." } }))
+      .some((x) => x.meaning === "parler")).toBe(false);
+  });
+
   it("vocabulary topics don't hint the words they teach", () => {
     const g = glossesFor(ex({ type: "translation", skillId: "de-w9-time", prompt: "See you tomorrow.", accepted: ["Bis morgen."] }));
     const vocabTaught = g.find((x) => x.meaning === "morgen");
