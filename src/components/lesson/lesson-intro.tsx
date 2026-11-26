@@ -5,6 +5,7 @@ import { ArrowRight, Compass, Lightbulb, Sparkles, Target } from "lucide-react";
 import type { LessonIntro as Intro } from "@/lib/services/lessons";
 import { Button } from "@/components/ui/button";
 import { spokenCell } from "@/lib/content/speak-table";
+import { meaningOf } from "@/lib/content/verb-meanings";
 import { SpeakButton } from "../speech/speak-button";
 
 export function LessonIntro({ intro, eyebrow, title, subtitle, count, minutes, onStart, speak }: {
@@ -51,7 +52,12 @@ export function LessonIntro({ intro, eyebrow, title, subtitle, count, minutes, o
             <div className="overflow-x-auto rounded-xl border border-border">
               <table className="w-full text-left text-sm">
                 <thead className="bg-surface-2/70 text-muted">
-                  <tr>{sec.table.headers.map((h, i) => <th key={i} scope="col" className="px-3.5 py-2 font-medium">{h}</th>)}</tr>
+                  <tr>{sec.table.headers.map((h, i) => (
+                    <th key={i} scope="col" className="px-3.5 py-2 align-bottom font-medium">
+                      <span lang={meaningOf(h) ? tl : undefined}>{h}</span>
+                      {meaningOf(h) && <span className="block text-xs font-normal text-subtle">{meaningOf(h)}</span>}
+                    </th>
+                  ))}</tr>
                 </thead>
                 <tbody>
                   {sec.table.rows.map((row, r) => (
@@ -64,6 +70,7 @@ export function LessonIntro({ intro, eyebrow, title, subtitle, count, minutes, o
                               {cell}
                               {say && <SpeakButton onSpeak={() => speak(say)} className="size-6 [&_svg]:size-3.5" label={`Listen: ${say}`} />}
                             </span>
+                            {meaningOf(cell) && <span lang="en" className="block text-xs font-normal text-muted">{meaningOf(cell)}</span>}
                           </td>
                         );
                       })}

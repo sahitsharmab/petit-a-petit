@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { spokenCell } from "@/lib/content/speak-table";
 import { courseSkills } from "@/lib/content/curriculum";
+import { meaningOf } from "@/lib/content/verb-meanings";
 
 const said = (headers: string[], rows: string[][]) => rows.map((row) => row.map((_, c) => spokenCell(headers, row, c)));
 
@@ -21,6 +22,26 @@ describe("intro table audio", () => {
     expect(said(["Subject", "pronoun", "se lever"], [["je", "me (m')", "je me lève"]])).toEqual([[null, "me", "je me lève"]]);
     expect(said(["", "masc.", "fem.", "neuter", "plural"], [["nominative", "der / ein", "die / eine", "das / ein", "die"], ["a", "ein", "eine", "ein", "—"]]))
       .toEqual([[null, "der, ein", "die, eine", "das, ein", "die"], [null, "ein", "eine", "ein", null]]);
+  });
+
+  it("every verb heading and infinitive in the real tables has an English meaning", () => {
+    const missing: string[] = [];
+    for (const lang of ["fr", "de"] as const) for (const s of courseSkills(lang)) {
+      for (const sec of (s as { explanation?: { table?: { headers: string[]; rows: string[][] } }[] }).explanation ?? []) {
+        if (!sec.table) continue;
+        const { headers, rows } = sec.table;
+        // Verb headings: tables whose rows are subjects (je, ich…) or the "" label column of a conjugation table.
+        headers.forEach((h, c) => { if (c > 0 && /(er|ir|re|oir|en|ln|rn)$/.test(h) && !/^(masculine|neuter|feminine|singular|plural|pattern)$/i.test(h) && !meaningOf(h)) missing.push(`${s.id}: ${h}`); });
+        const inf = headers.findIndex((h) => /^infinitive$/i.test(h));
+        const verbLabels = headers[0] === "" && headers.slice(1).every((h) => /^(je|nous|ils)$/.test(h));
+        for (const row of rows) {
+          if (inf >= 0 && !meaningOf(row[inf])) missing.push(`${s.id}: ${row[inf]}`);
+          if (verbLabels && !meaningOf(row[0])) missing.push(`${s.id}: ${row[0]}`);
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+    expect(meaningOf("pouvoir")).toBe("can, to be able to");
   });
 
   it("every course-language column of every real table can be heard", () => {
