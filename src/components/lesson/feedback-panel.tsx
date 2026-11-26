@@ -1,4 +1,5 @@
 "use client";
+import type * as React from "react";
 import { useCourse } from "@/components/course/course-context";
 import { motion } from "motion/react";
 import { ArrowRight, BookMarked, CheckCircle2, CircleAlert, Lightbulb, RotateCcw, Sparkles, XCircle } from "lucide-react";
@@ -25,9 +26,11 @@ function Marks({ marks, tone }: { marks: Mark[]; tone: "wrong" | "right" }) {
   );
 }
 
-export function FeedbackPanel({ feedback, seed, onContinue, onRetry, onReveal, hint, speak, isChoice, busy = false }: {
+export function FeedbackPanel({ feedback, seed, onContinue, onRetry, onReveal, hint, speak, isChoice, busy = false, actions }: {
   feedback: Feedback;
   seed: number;
+  /** Replaces the Continue / Try again buttons (used when looking back at an answered question). */
+  actions?: React.ReactNode;
   /** A request is in flight: actions are disabled so they can't be sent twice. */
   busy?: boolean;
   onContinue: () => void;
@@ -93,7 +96,7 @@ export function FeedbackPanel({ feedback, seed, onContinue, onRetry, onReveal, h
           </div>
         </div>
         <div className="mt-4 flex flex-wrap justify-end gap-2">
-          {feedback.canRetry ? (
+          {actions ? actions : feedback.canRetry ? (
             <>
               <Button variant="ghost" onClick={onReveal} disabled={busy}>Show answer</Button>
               <Button variant="danger" onClick={onRetry} disabled={busy} autoFocus><RotateCcw /> Try again</Button>

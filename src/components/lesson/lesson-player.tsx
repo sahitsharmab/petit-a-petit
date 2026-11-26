@@ -3,7 +3,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
-import { AlertTriangle, ArrowLeft, Lightbulb, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Lightbulb, Loader2 } from "lucide-react";
 import { EXERCISE_LABEL, type PublicExercise } from "@/lib/content/types";
 import type { LessonIntro as Intro } from "@/lib/services/lessons";
 import type { Feedback, PlayerState, SessionSummary } from "@/lib/services/sessions";
@@ -98,6 +98,8 @@ export function LessonPlayer({ lesson, exercises, sessionId, initialState, initi
   const [error, setError] = React.useState<string | null>(null);
   const [retrying, setRetrying] = React.useState(false);
   const [hintShown, setHintShown] = React.useState(false);
+  /** Index of an answered question being looked at again (read-only), or null for the current one. */
+  const [peek, setPeek] = React.useState<number | null>(null);
   const { speak, supported: speechSupported } = useSpeech(settings.speechRate);
   const byId = React.useMemo(() => new Map(exercises.map((e) => [e.id, e])), [exercises]);
   const takeActive = useActiveTime(sessionId, !summary);
@@ -208,7 +210,7 @@ export function LessonPlayer({ lesson, exercises, sessionId, initialState, initi
   // Keyboard: Enter checks / continues.
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Enter" || e.shiftKey || summary || state.phase !== "exercise") return;
+      if (e.key !== "Enter" || e.shiftKey || summary || state.phase !== "exercise" || peek !== null) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "BUTTON" || tag === "A") return;
       if (tag === "INPUT" || tag === "TEXTAREA") return; // inputs handle Enter themselves
@@ -217,7 +219,7 @@ export function LessonPlayer({ lesson, exercises, sessionId, initialState, initi
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [feedback, locked, next, check, summary, state.phase]);
+  }, [feedback, locked, next, check, summary, state.phase, peek]);
 
   const total = state.queue.length;
   const doneCount = Math.min(total, state.index + (result?.done ? 1 : 0));
@@ -251,6 +253,39 @@ export function LessonPlayer({ lesson, exercises, sessionId, initialState, initi
     );
   }
 
+  // Looking back at an answered question: the saved answer and feedback, nothing can be changed.
+  const peekId = peek !== null ? state.queue[peek] : undefined;
+  const peekEx = peekId ? byId.get(peekId) : undefined;
+  const peekResult = peekId ? state.results[state.retryFrom !== null && peek! >= state.retryFrom ? `${peekId}#retry` : peekId] : undefined;
+  if (peek !== null && peekEx && peekResult?.feedback) {
+    const go = (i: number) => { setPeek(i >= state.index ? null : i); window.scrollTo({ top: 0 }); };
+    return (
+      <MotionConfig reducedMotion="user">
+        <Frame progress={total ? doneCount / total : 0} label={`${peek + 1} of ${total}`}>
+          <div className="mx-auto max-w-2xl space-y-5 pb-72">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-surface-2 px-2.5 py-0.5 text-xs font-medium text-muted">Looking back · question {peek + 1}</span>
+              <span className="text-xs text-subtle">{EXERCISE_LABEL[peekEx.type]}</span>
+            </div>
+            <h1 className="text-[0.95rem] font-semibold text-muted">{peekEx.instruction}</h1>
+            <ExerciseView key={`peek-${peek}`} ex={peekEx} answer={restoreAnswer(peekEx, peekResult.lastAnswer)} setAnswer={() => {}} feedback={peekResult.feedback} locked
+              onSubmit={() => {}} speak={speak} speechSupported={speechSupported} autoPlay={false} showTranslations={settings.showTranslations} />
+          </div>
+          <div className="fixed inset-x-0 bottom-0 z-20">
+            <FeedbackPanel feedback={peekResult.feedback} seed={peek} hint={peekEx.hint} speak={speak} isChoice={isChoiceExercise(peekEx)}
+              onContinue={() => {}} onRetry={() => {}} onReveal={() => {}}
+              actions={<>
+                <Button variant="ghost" onClick={() => go(peek - 1)} disabled={peek === 0}><ChevronLeft /> Previous</Button>
+                <Button size="lg" onClick={() => go(peek + 1)} autoFocus className="min-w-36">
+                  {peek + 1 >= state.index ? <>Back to question {Math.min(state.index + 1, total)} <ArrowRight /></> : <>Next <ChevronRight /></>}
+                </Button>
+              </>} />
+          </div>
+        </Frame>
+      </MotionConfig>
+    );
+  }
+
   return (
     <MotionConfig reducedMotion="user">
       <Frame progress={total ? doneCount / total : 0} label={`${Math.min(state.index + 1, total)} of ${total}`}>
@@ -264,6 +299,12 @@ export function LessonPlayer({ lesson, exercises, sessionId, initialState, initi
                 </span>
                 <span className="text-xs text-subtle">{EXERCISE_LABEL[ex.type]}</span>
                 {ex.source === "ai" && <span className="text-xs text-subtle">· AI-generated</span>}
+                {state.index > 0 && (
+                  <button type="button" onClick={() => { setPeek(state.index - 1); window.scrollTo({ top: 0 }); }} disabled={busy}
+                    className="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-muted hover:bg-surface-2 hover:text-ink">
+                    <ChevronLeft className="size-3.5" /> Previous question
+                  </button>
+                )}
               </div>
               <h1 className="text-[0.95rem] font-semibold text-muted">{ex.instruction}</h1>
               {inRetry && !result?.attempts && state.index === state.retryFrom && (
