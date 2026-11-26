@@ -141,6 +141,13 @@ export function LessonPlayer({ lesson, exercises, sessionId, initialState, initi
     });
   }, [run, sessionId, router, takeActive]);
 
+  /** Once a question is over (right, wrong or revealed), say the correct sentence aloud. */
+  const sayAnswer = React.useCallback((fb: Feedback) => {
+    if (!ex || fb.canRetry || !settings.autoPlayAudio) return;
+    const text = ex.type === "dialogue" ? fb.correctAnswer : ex.audioText;
+    if (text) speak(text);
+  }, [ex, settings.autoPlayAudio, speak]);
+
   const check = React.useCallback(async () => {
     if (!ex || busy || locked || !hasAnswer(ex, answer)) return;
     await run(async () => {
@@ -151,9 +158,9 @@ export function LessonPlayer({ lesson, exercises, sessionId, initialState, initi
       });
       setState(res.state);
       setRetrying(false);
-      if (res.feedback.verdict !== "incorrect" && ex.audioText && ex.type !== "listening" && ex.type !== "dialogue" && settings.autoPlayAudio) speak(ex.audioText);
+      sayAnswer(res.feedback);
     });
-  }, [ex, busy, locked, answer, run, sessionId, hintShown, result?.attempts, speechSupported, speak, settings.autoPlayAudio]);
+  }, [ex, busy, locked, answer, run, sessionId, hintShown, result?.attempts, speechSupported, sayAnswer]);
 
   const reveal = React.useCallback(async () => {
     if (!ex || busy) return;
@@ -164,8 +171,9 @@ export function LessonPlayer({ lesson, exercises, sessionId, initialState, initi
       });
       setState(res.state);
       setRetrying(false);
+      sayAnswer(res.feedback);
     });
-  }, [ex, busy, run, sessionId, answer, result?.attempts]);
+  }, [ex, busy, run, sessionId, answer, result?.attempts, sayAnswer]);
 
   const next = React.useCallback(async () => {
     if (busy) return;

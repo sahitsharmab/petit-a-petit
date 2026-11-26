@@ -391,7 +391,10 @@ function mcqExercise(ctx: GenContext, skillId: string, item: McqItem, typed: boo
     mode: item.audio ? "choice" : undefined,
     instruction: item.audio ? "Listen and answer" : item.prompt.includes("___") ? "Choose the right word" : "Choose the best answer",
     prompt: item.prompt,
-    audioText: item.audio ?? (item.prompt.includes("___") ? item.prompt.replace("___", answer).replace(/\s*\([^)]*\)\s*$/, "") : undefined),
+    // Spoken once the question is over: the full sentence, the course-language answer, or the quoted phrase
+    // whose English meaning was being asked for.
+    audioText: item.audio ?? (item.prompt.includes("___") ? item.prompt.replace("___", answer).replace(/\s*\([^)]*\)\s*$/, "")
+      : item.prompt.match(/«\s*([^»]+?)\s*»\s*means/)?.[1] ?? (item.en === answer ? undefined : answer)),
     options: order.map((i) => item.options[i]),
     answerIndex: order.indexOf(item.answer),
     accepted: [answer],
