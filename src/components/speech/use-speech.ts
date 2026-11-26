@@ -73,7 +73,7 @@ export function useSpeech(defaultRate = 0.9) {
 
   const stop = React.useCallback(() => { if (supported) window.speechSynthesis.cancel(); setSpeaking(false); }, [supported]);
 
-  return { supported, hasVoice: !!voice, speak, stop, speaking };
+  return { supported, hasVoice: !!voice, voiceName: voice ? `${voice.name} (${voice.lang})` : null, speak, stop, speaking };
 }
 
 /** Browser speech recognition (Chrome/Edge/Safari) for optional spoken answers. */

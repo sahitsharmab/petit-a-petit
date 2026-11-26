@@ -2,7 +2,7 @@
 import type * as React from "react";
 import { useCourse } from "@/components/course/course-context";
 import { motion } from "motion/react";
-import { ArrowRight, BookMarked, CheckCircle2, CircleAlert, Lightbulb, RotateCcw, Sparkles, XCircle } from "lucide-react";
+import { ArrowRight, BookMarked, CheckCircle2, CircleAlert, Lightbulb, RotateCcw, Sparkles, Volume2, XCircle } from "lucide-react";
 import type { Mark } from "@/lib/french/evaluate";
 import type { Feedback } from "@/lib/services/sessions";
 import { Button } from "@/components/ui/button";
@@ -26,9 +26,11 @@ function Marks({ marks, tone }: { marks: Mark[]; tone: "wrong" | "right" }) {
   );
 }
 
-export function FeedbackPanel({ feedback, seed, onContinue, onRetry, onReveal, hint, speak, isChoice, busy = false, actions }: {
+export function FeedbackPanel({ feedback, seed, onContinue, onRetry, onReveal, hint, speak, isChoice, busy = false, actions, listen }: {
   feedback: Feedback;
   seed: number;
+  /** The full correct sentence in the course language, with a Listen button once the question is over. */
+  listen?: string;
   /** Replaces the Continue / Try again buttons (used when looking back at an answered question). */
   actions?: React.ReactNode;
   /** A request is in flight: actions are disabled so they can't be sent twice. */
@@ -68,6 +70,16 @@ export function FeedbackPanel({ feedback, seed, onContinue, onRetry, onReveal, h
               <p className="text-[0.95rem]">{feedback.note ?? "Have another look — you can try once more."}</p>
             ) : (
               <>
+                {listen && !(showCorrection && listen.trim() === feedback.correctAnswer.trim()) && (
+                  <button type="button" onClick={() => speak(listen)} aria-label={`Listen: ${listen}`}
+                    className="flex w-full items-center gap-2.5 rounded-xl bg-surface/80 px-3.5 py-2.5 text-left transition-colors hover:bg-surface">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-soft text-primary"><Volume2 className="size-4" /></span>
+                    <span className="min-w-0">
+                      <span className="block text-xs font-medium uppercase tracking-wide text-muted">Listen</span>
+                      <span className="block font-medium text-ink" lang={tl}>{listen}</span>
+                    </span>
+                  </button>
+                )}
                 {feedback.note && <p className="text-[0.95rem]">{feedback.note}</p>}
                 {showCorrection && (
                   <div className="rounded-xl bg-surface/80 px-3.5 py-2.5 text-[0.95rem]">

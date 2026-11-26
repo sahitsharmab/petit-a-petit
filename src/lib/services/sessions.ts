@@ -339,13 +339,12 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 /** Next-step text from what actually happened and what the planner will do (passed skills move on). */
 function nextStepText(b: Record<Outcome, number>, primaryPassed: boolean): string {
-  const parts: string[] = [];
-  if (b.missed) parts.push(`You missed ${plural(b.missed, "answer", "answers")}. ${b.missed === 1 ? "It's" : "They're"} scheduled for review.`);
-  if (b.recovered) parts.push(`You fixed ${plural(b.recovered, "answer", "answers")} on a second try. ${b.recovered === 1 ? "It comes" : "They come"} back once more so ${b.recovered === 1 ? "it sticks" : "they stick"}.`);
-  const assisted = b.almost + b.hinted + b.supported;
-  if (assisted) parts.push(`${plural(assisted, "answer was", "answers were")} nearly right or needed help. Try ${assisted === 1 ? "it" : "them"} unaided next time.`);
-  if (!parts.length) parts.push("Every answer was exact and unaided.");
-  parts.push(primaryPassed ? "This topic is passed, so new material comes next." : "This topic needs a bit more practice before new material.");
+  // The breakdown chips show the counts; this says what happens next in one or two short sentences.
+  const review = b.missed + b.recovered;
+  const helped = b.almost + b.hinted + b.supported;
+  const parts = [primaryPassed ? "Topic passed: new material comes next." : "This topic needs a little more practice before you move on."];
+  if (review) parts.push(`${plural(review, "question you got wrong comes", "questions you got wrong come")} back for review.`);
+  else if (!helped) parts.push("Every answer right first time, without help.");
   return parts.join(" ");
 }
 

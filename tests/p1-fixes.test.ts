@@ -70,7 +70,7 @@ describe("F06 · scoring buckets and honest recaps", () => {
     expect(recap.kind).toBe("recovered");
     expect(recap.answer).toBe("zzz");
     expect(recap.retryAnswer).toBe(right(typed[0]));
-    expect(summary.nextStep).toMatch(/fixed 1 answer on a second try/);
+    expect(summary.nextStep).toMatch(/1 question you got wrong comes back for review/);
   });
 });
 

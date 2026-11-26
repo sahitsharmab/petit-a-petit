@@ -48,6 +48,11 @@ function restoreAnswer(ex: PublicExercise | undefined, last: string | undefined)
   return { ...EMPTY_ANSWER, text: last };
 }
 
+/** The full correct sentence in the course language: the reply for dialogues, the exercise's audio otherwise. */
+function answerSentence(ex: PublicExercise, fb: Feedback): string | undefined {
+  return ex.type === "dialogue" ? fb.correctAnswer : ex.audioText;
+}
+
 /** Counts focused, non-idle seconds and flushes them to the server. */
 function useActiveTime(sessionId: string, enabled: boolean) {
   const pending = React.useRef(0);
@@ -146,7 +151,7 @@ export function LessonPlayer({ lesson, exercises, sessionId, initialState, initi
   /** Once a question is over (right, wrong or revealed), say the correct sentence aloud. */
   const sayAnswer = React.useCallback((fb: Feedback) => {
     if (!ex || fb.canRetry || !settings.autoPlayAudio) return;
-    const text = ex.type === "dialogue" ? fb.correctAnswer : ex.audioText;
+    const text = answerSentence(ex, fb);
     if (text) speak(text);
   }, [ex, settings.autoPlayAudio, speak]);
 
@@ -273,6 +278,7 @@ export function LessonPlayer({ lesson, exercises, sessionId, initialState, initi
           </div>
           <div className="fixed inset-x-0 bottom-0 z-20">
             <FeedbackPanel feedback={peekResult.feedback} seed={peek} hint={peekEx.hint} speak={speak} isChoice={isChoiceExercise(peekEx)}
+              listen={answerSentence(peekEx, peekResult.feedback)}
               onContinue={() => {}} onRetry={() => {}} onReveal={() => {}}
               actions={<>
                 <Button variant="ghost" onClick={() => go(peek - 1)} disabled={peek === 0}><ChevronLeft /> Previous</Button>
@@ -326,6 +332,7 @@ export function LessonPlayer({ lesson, exercises, sessionId, initialState, initi
           <AnimatePresence mode="wait" initial={false}>
             {feedback ? (
               <FeedbackPanel key={`fb-${resultKey}-${result?.attempts}`} feedback={feedback} seed={state.index} hint={ex.hint} speak={speak} isChoice={isChoiceExercise(ex)}
+                listen={answerSentence(ex, feedback)}
                 busy={busy} onContinue={next} onRetry={() => { setRetrying(true); setHintShown(true); }} onReveal={reveal} />
             ) : (
               <motion.div key="actions" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="border-t border-border bg-background/92 backdrop-blur">

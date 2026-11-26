@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { ThemeToggle } from "@/components/shell/theme-toggle";
 import { useSpeech } from "@/components/speech/use-speech";
+import { VoiceSetupSteps } from "@/components/speech/voice-setup";
 import { useCourse } from "@/components/course/course-context";
 import type { AiStatus } from "@/lib/ai/models";
 import { AiCard } from "./ai-card";
@@ -36,7 +37,7 @@ export function SettingsForm({ initial, ai, hosted }: { initial: Settings; ai: A
   const [saved, setSaved] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [perm, setPerm] = React.useState<NotificationPermission | "unsupported">("default");
-  const { speak, supported: ttsSupported, hasVoice } = useSpeech(s.speechRate);
+  const { speak, supported: ttsSupported, hasVoice, voiceName } = useSpeech(s.speechRate);
   const course = useCourse();
   const timer = React.useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -122,7 +123,17 @@ export function SettingsForm({ initial, ai, hosted }: { initial: Settings; ai: A
               <Button size="sm" variant="ghost" onClick={() => speak(course.testPhrase, s.speechRate)} disabled={!ttsSupported}>Test</Button>
             </div>
           </Row>
-          <Row label="Play audio automatically" description="Read listening exercises and conversation replies aloud.">
+          <div className="space-y-3 py-4">
+            <div>
+              <p className="font-medium">{course.name} voice</p>
+              <p className="text-sm text-muted">
+                {!ttsSupported ? "Speech isn't supported in this browser." : voiceName ? <>This device uses <b className="text-ink">{voiceName}</b>. If it's hard to understand, install a better one:</> : `No ${course.name} voice on this device yet. To add one:`}
+              </p>
+            </div>
+            <VoiceSetupSteps />
+            <p className="text-xs text-muted">The voice comes from your device, so each phone or computer needs its own. After installing, reload this page and press Test.</p>
+          </div>
+          <Row label="Play audio automatically" description="Read listening exercises, conversation replies and the correct answer after each question aloud.">
             <Switch checked={s.autoPlayAudio} onCheckedChange={(v) => save({ autoPlayAudio: v })} aria-label="Play audio automatically" />
           </Row>
           <Row label="Show English translations" description="Default for dialogues and conversations (you can toggle it in each conversation).">

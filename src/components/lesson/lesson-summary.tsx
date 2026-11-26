@@ -20,7 +20,7 @@ function ScoreRing({ value, label }: { value: number; label: string }) {
   const r = 52;
   const c = 2 * Math.PI * r;
   return (
-    <div className="relative size-40">
+    <div className="relative size-36 shrink-0">
       <svg viewBox="0 0 120 120" className="size-full -rotate-90" aria-hidden>
         <circle cx="60" cy="60" r={r} fill="none" stroke="var(--surface-2)" strokeWidth="10" />
         <motion.circle cx="60" cy="60" r={r} fill="none" stroke={value >= 0.6 ? "var(--success)" : "var(--warning)"} strokeWidth="10" strokeLinecap="round"
@@ -29,8 +29,8 @@ function ScoreRing({ value, label }: { value: number; label: string }) {
       </svg>
       <div className="absolute inset-0 grid place-items-center text-center">
         <div>
-          <p className="font-display text-4xl font-semibold">{pct(value)}</p>
-          <p className="text-xs text-muted">{label}</p>
+          <p className="font-display text-[2rem] font-semibold leading-none tabular-nums">{pct(value)}</p>
+          <p className="mx-auto mt-1 max-w-20 text-[0.7rem] leading-tight text-muted">{label}</p>
         </div>
       </div>
     </div>
@@ -43,7 +43,7 @@ export function LessonSummary({ summary, onPracticeAgain, busy }: { summary: Ses
   const heading = summary.accuracy >= 0.85 ? "Magnifique !" : summary.accuracy >= 0.6 ? "Bien joué !" : "Courage — ça vient !";
   const b = summary.breakdown;
   // Summaries saved before the breakdown existed counted every non-wrong first answer.
-  const scoreLabel = b ? "exact, unaided" : "first try";
+  const scoreLabel = b ? "right first time" : "first try";
   const toReview = b ? b.missed + b.recovered : summary.mistakes.length;
   return (
     <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="mx-auto max-w-2xl space-y-6 pb-16">
@@ -58,7 +58,7 @@ export function LessonSummary({ summary, onPracticeAgain, busy }: { summary: Ses
 
       <section className="grid grid-cols-3 gap-3">
         {[
-          { icon: Target, label: b ? "Exact, unaided" : "Correct first try", value: `${summary.firstTryCorrect}/${summary.total}` },
+          { icon: Target, label: b ? "Right first time" : "Correct first try", value: `${summary.firstTryCorrect}/${summary.total}` },
           { icon: Clock, label: "Minutes", value: String(summary.minutes) },
           { icon: Repeat2, label: "To review", value: String(toReview) },
         ].map(({ icon: Icon, label, value }) => (
