@@ -172,10 +172,18 @@ function MultipleChoiceView(p: ViewProps) {
           {p.ex.audioText && isFrenchPrompt && <SpeakButton onSpeak={() => p.speak(p.ex.audioText!)} />}
         </div>
         {p.ex.promptNote && <p className="mt-2 text-sm text-muted">{p.ex.promptNote}</p>}
+        {p.ex.prompt.includes("___") && <SentenceMeaning p={p} />}
       </PromptCard>
       <OptionList {...p} />
     </div>
   );
+}
+
+/** What a gapped sentence means ("Tu peux ___ ?" → "Can you come?"), unless the note already says it. */
+function SentenceMeaning({ p }: { p: ViewProps }) {
+  const t = p.ex.translation;
+  if (!p.showTranslations || !t || p.ex.promptNote?.includes(t)) return null;
+  return <p className="mt-2 text-sm text-muted" lang="en">“{t}”</p>;
 }
 
 function renderBlank(text: string) {
@@ -211,6 +219,7 @@ function FillBlankView(p: ViewProps) {
           <Glossed p={p} text={after} />
         </p>
         {p.ex.promptNote && <p className="mt-4 text-sm text-muted">{p.ex.promptNote}</p>}
+        <SentenceMeaning p={p} />
       </PromptCard>
       {!p.locked && <AccentBar inputRef={ref} onInsert={(v) => p.setAnswer({ ...p.answer, text: v })} />}
     </div>

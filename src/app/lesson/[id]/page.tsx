@@ -7,6 +7,7 @@ import { getLesson, getLessonExercises } from "@/lib/services/lessons";
 import { getOrStartSession, type SessionSummary } from "@/lib/services/sessions";
 import { getSettings } from "@/lib/services/stats";
 import { withGlosses } from "@/lib/services/words";
+import { lessonWords } from "@/lib/content/lexicon";
 import { formatDateLong } from "@/lib/learning/dates";
 import { LessonPlayer } from "@/components/lesson/lesson-player";
 import { CourseProvider } from "@/components/course/course-context";
@@ -30,6 +31,9 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
   if (!lesson) notFound();
   const [rawExercises, session, settings] = await Promise.all([getLessonExercises(db, id), getOrStartSession(db, id), getSettings(db)]);
   const exercises = (await withGlosses(db, rawExercises)).map(toPublic);
+  // Verbs heading the page's own tables are already explained there.
+  const explained = lesson.intro.explanation.flatMap((s) => s.table?.headers ?? []);
+  const intro = { ...lesson.intro, words: lessonWords(rawExercises, db.lang, explained) };
   const eyebrow = lesson.kind === "daily"
     ? `Week ${lesson.weekNumber} · Day ${lesson.dayNumber} — ${formatDateLong(lesson.lessonDate)}`
     : lesson.kind === "review" ? "Review session" : `Practice · Week ${lesson.weekNumber}`;
@@ -37,7 +41,7 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
     <CourseProvider lang={db.lang}>
       <LessonPlayer
         key={session.id}
-        lesson={{ id: lesson.id, title: lesson.title, subtitle: lesson.subtitle, eyebrow, intro: lesson.intro, primarySkillId: lesson.primarySkillId, kind: lesson.kind }}
+        lesson={{ id: lesson.id, title: lesson.title, subtitle: lesson.subtitle, eyebrow, intro, primarySkillId: lesson.primarySkillId, kind: lesson.kind }}
         exercises={exercises}
         sessionId={session.id}
         initialState={session.state}

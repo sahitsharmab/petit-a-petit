@@ -205,8 +205,28 @@ export const SKILLS: SkillDef[] = [
     objectives: ["Conjugate pouvoir, vouloir, devoir", "Use modal + infinitive, and polite je voudrais"],
     explanation: [
       { heading: "Conjugations", body: "They share a pattern: a change in the nous/vous stem.", table: { headers: ["", "pouvoir", "vouloir", "devoir"], rows: [["je", "peux", "veux", "dois"], ["tu", "peux", "veux", "dois"], ["il/elle/on", "peut", "veut", "doit"], ["nous", "pouvons", "voulons", "devons"], ["vous", "pouvez", "voulez", "devez"], ["ils/elles", "peuvent", "veulent", "doivent"]] } },
-      { heading: "+ infinitive", body: "The second verb stays in the infinitive: Je peux venir. Tu dois partir. Nous voulons visiter Paris.", examples: [{ fr: "Est-ce que je peux payer par carte ?", en: "Can I pay by card?" }] },
-      { heading: "Politeness", body: "Je voudrais (I would like) is softer than je veux. Use it in shops and cafés: Je voudrais un café, s'il vous plaît." },
+      { heading: "What they mean", body: "Pouvoir = can, to be able to. It's also how you ask for permission or a favour. Vouloir = to want. Devoir = must, to have to.", examples: [
+        { fr: "Je peux venir demain.", en: "I can come tomorrow." },
+        { fr: "Tu peux m'aider ?", en: "Can you help me?" },
+        { fr: "Il veut un café.", en: "He wants a coffee." },
+        { fr: "Nous devons travailler.", en: "We have to work." },
+      ] },
+      { heading: "+ infinitive", body: "After pouvoir, vouloir or devoir, the next verb doesn't change: it stays in the infinitive (the dictionary form ending in -er, -ir or -re). Only the modal is conjugated. Tu peux venir, never « tu peux viens ».", examples: [
+        { fr: "Tu peux venir ?", en: "Can you come?" },
+        { fr: "Je dois partir.", en: "I have to leave." },
+        { fr: "Nous voulons visiter Paris.", en: "We want to visit Paris." },
+        { fr: "Est-ce que je peux payer par carte ?", en: "Can I pay by card?" },
+      ] },
+      { heading: "Saying no and asking", body: "Ne … pas goes around the modal, not the infinitive. To ask, raise your voice at the end, start with est-ce que, or (formal) swap the verb and pronoun: Pouvez-vous… ?", examples: [
+        { fr: "Je ne peux pas venir.", en: "I can't come." },
+        { fr: "Tu ne dois pas fumer ici.", en: "You mustn't smoke here." },
+        { fr: "Est-ce que tu veux sortir ?", en: "Do you want to go out?" },
+        { fr: "Pouvez-vous répéter, s'il vous plaît ?", en: "Can you repeat, please?" },
+      ] },
+      { heading: "Politeness", body: "Je voudrais (I would like) is softer than je veux. Use it in shops and cafés. Vouloir can also take a noun, like want in English.", examples: [
+        { fr: "Je voudrais un café, s'il vous plaît.", en: "I'd like a coffee, please." },
+        { fr: "Je voudrais réserver une table.", en: "I'd like to book a table." },
+      ] },
     ],
     practice: { conj: { verbs: ["pouvoir", "vouloir", "devoir"], tense: "present" }, types: ["multiple_choice", "conjugation", "fill_blank", "translation", "listening"] },
   }),

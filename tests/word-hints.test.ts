@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDb, schema } from "@/lib/db";
-import { glossesFor, lexicon } from "@/lib/content/lexicon";
+import { glossesFor, lessonWords, lexicon } from "@/lib/content/lexicon";
 import type { Exercise } from "@/lib/content/types";
 import { KNOWN_AFTER, recordWordExposure, withGlosses } from "@/lib/services/words";
 import { getOrCreateDailyLesson, getLessonExercises } from "@/lib/services/lessons";
@@ -51,6 +51,26 @@ describe("word hints", () => {
     // Course-language prompts never hint verbs: there the verb is usually what's being tested.
     expect(glossesFor(ex({ type: "fill_blank", skillId: "w1-er-present", prompt: "Je ___ français.", accepted: ["parle"], blank: { before: "Je ", after: " français." } }))
       .some((x) => x.meaning === "parler")).toBe(false);
+  });
+
+  it("a lesson lists the words its exercises use, in dictionary form", () => {
+    const exs = [
+      ex({ type: "fill_blank", skillId: "w5-modals", prompt: "Tu peux ___ ?", accepted: ["venir"], audioText: "Tu peux venir ?" }),
+      ex({ type: "translation", skillId: "w5-modals", prompt: "I have to leave tomorrow.", accepted: ["Je dois partir demain."] }),
+      ex({ type: "translation", skillId: "w1-er-present", prompt: "I'm listening to a podcast.", accepted: ["J'écoute un podcast."] }),
+    ];
+    const words = lessonWords(exs, "fr", ["pouvoir", "vouloir", "devoir"]);
+    expect(words).toContainEqual({ word: "venir", en: "to come" });
+    expect(words).toContainEqual({ word: "partir", en: "to leave" });
+    expect(words).toContainEqual({ word: "demain", en: "tomorrow" });
+    expect(words.map((w) => w.word)).not.toContain("pouvoir"); // explained by the page's own table
+    expect(words.map((w) => w.word)).not.toContain("un podcast"); // same word in English
+    const phrase = lessonWords([
+      ex({ type: "translation", skillId: "w5-modals", prompt: "We want to visit Paris.", accepted: ["Nous voulons visiter Paris."] }),
+      ex({ type: "translation", skillId: "w5-modals", prompt: "I visit the museum.", accepted: ["Je visite le musée."] }),
+    ], "fr").map((w) => w.word);
+    expect(phrase).toContain("visiter");
+    expect(phrase).not.toContain("visiter Paris");
   });
 
   it("vocabulary topics don't hint the words they teach", () => {

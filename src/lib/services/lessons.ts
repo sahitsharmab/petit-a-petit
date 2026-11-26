@@ -24,6 +24,8 @@ export interface LessonIntro {
   aiIntro?: string;
   aiExamples?: { fr: string; en: string }[];
   aiNote?: string;
+  /** Words the exercises use, with meanings: added when the page is shown (not stored). */
+  words?: { word: string; en: string }[];
 }
 
 export interface LessonRecord {

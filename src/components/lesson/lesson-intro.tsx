@@ -1,7 +1,7 @@
 "use client";
 import { useCourse } from "@/components/course/course-context";
 import { motion } from "motion/react";
-import { ArrowRight, Compass, Lightbulb, Sparkles, Target } from "lucide-react";
+import { ArrowRight, BookOpen, Compass, Lightbulb, Sparkles, Target } from "lucide-react";
 import type { LessonIntro as Intro } from "@/lib/services/lessons";
 import { Button } from "@/components/ui/button";
 import { spokenCell } from "@/lib/content/speak-table";
@@ -88,6 +88,22 @@ export function LessonIntro({ intro, eyebrow, title, subtitle, count, minutes, o
         <section className="card space-y-3 p-5 sm:p-6">
           <h2 className="flex items-center gap-2 font-display text-xl font-semibold">Fresh examples <Sparkles className="size-4 text-primary" /></h2>
           <Examples examples={intro.aiExamples} speak={speak} />
+        </section>
+      )}
+
+      {intro.words && intro.words.length > 0 && (
+        <section className="card space-y-3 p-5 sm:p-6">
+          <h2 className="flex items-center gap-2 font-display text-xl font-semibold"><BookOpen className="size-5 text-primary" /> Words in this lesson</h2>
+          <p className="text-sm text-muted">The words you'll meet in the exercises.</p>
+          <ul className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+            {intro.words.map((w) => (
+              <li key={w.word} className="flex items-center gap-1.5 border-b border-border/60 py-1.5 text-[0.95rem] last:border-0">
+                <SpeakButton onSpeak={() => speak(w.word.replace(/\(.*?\)/g, ""))} className="-ml-1.5 size-7 shrink-0 [&_svg]:size-3.5" label={`Listen: ${w.word}`} />
+                <span className="font-medium" lang={tl}>{w.word}</span>
+                <span className="text-muted">— {w.en}</span>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 

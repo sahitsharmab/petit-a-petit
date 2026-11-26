@@ -2,6 +2,7 @@ import type { Lang } from "./languages";
 import { langOfSkill } from "./languages";
 import { getSkill } from "./curriculum";
 import { FRAMES } from "./frames";
+import { VERB_MEANING } from "./verb-meanings";
 import type { Exercise, Gloss } from "./types";
 
 /*
@@ -651,6 +652,51 @@ export function glossesFor(ex: Exercise): Gloss[] {
     chosen.push(g);
   }
   return chosen.sort((a, b) => a.index - b.index).map(({ key, span, meaning, note }) => (note ? { key, span, meaning, note } : { key, span, meaning }));
+}
+
+export interface LessonWord { word: string; en: string }
+
+const isInfinitive = (w: string, lang: Lang) => lang === "fr" ? /^(se |s')?\p{L}+(er|ir|re|oir)$/u.test(w) : /^\p{L}+(en|ern|eln)$/u.test(w);
+/** Lower case without articles, so "un podcast" and "a podcast" count as the same word. */
+const bare = (s: string) => s.toLowerCase().replace(/^(un |une |le |la |les |l'|der |die |das |ein |eine |a |an |the )/, "").trim();
+
+/**
+ * The words a lesson's exercises use, in dictionary form with their meaning ("venir — come"),
+ * for the "Words in this lesson" list on the lesson page. Taken from the course-language
+ * sentences (answers, audio, dialogue lines), most frequent first. `exclude` drops words the
+ * page already explains (e.g. the verbs heading its conjugation table).
+ */
+export function lessonWords(exercises: Exercise[], lang: Lang, exclude: string[] = [], max = 18): LessonWord[] {
+  const lex = lexicon(lang);
+  const skip = new Set(exclude.map((x) => x.toLowerCase()));
+  const seen = new Map<string, { w: LessonWord; n: number; first: number }>();
+  let order = 0;
+  for (const ex of exercises) {
+    const texts = [ex.audioText, ...(ex.type === "listening" || ex.type === "multiple_choice" ? [] : [ex.accepted?.[0]]), ...(ex.lines?.map((l) => l.fr) ?? [])]
+      .filter((t): t is string => !!t).map((t) => t.replace(PATTERN, "$1"));
+    for (const text of texts) {
+      const hits: { e: LexEntry; index: number; len: number }[] = [];
+      for (const e of lex) {
+        const m = findAny(text, e.target);
+        if (m) hits.push({ e, index: m.index, len: m.text.length });
+      }
+      hits.sort((a, b) => b.len - a.len || Number(!!b.e.show) - Number(!!a.e.show)); // a tie goes to the verb entry
+      const taken: typeof hits = [];
+      for (const h of hits) if (!taken.some((t) => h.index < t.index + t.len && t.index < h.index + h.len)) taken.push(h);
+      for (const { e } of taken) {
+        const word = e.show ?? e.note ?? e.target[0]; // plain entries' notes are their dictionary form ("das Kind, die Kinder")
+        const en = e.show ? VERB_MEANING[e.show] ?? (isInfinitive(e.show, lang) && !/^(to |I'd )/.test(e.en[0]) ? `to ${e.en[0]}` : e.en[0]) : e.en[0];
+        if (!en || bare(word) === bare(en) || skip.has(word.toLowerCase())) continue;
+        const cur = seen.get(e.key);
+        if (cur) cur.n++;
+        else seen.set(e.key, { w: { word, en }, n: 1, first: order++ });
+      }
+    }
+  }
+  // "visiter Paris" adds nothing when "visiter" is listed too.
+  const all = [...seen.values()];
+  const words = all.filter((x) => !all.some((y) => y !== x && x.w.word.toLowerCase().startsWith(y.w.word.toLowerCase() + " ")));
+  return words.sort((a, b) => b.n - a.n || a.first - b.first).slice(0, max).sort((a, b) => a.first - b.first).map((x) => x.w);
 }
 
 /**

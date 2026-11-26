@@ -9,6 +9,7 @@ export const VERB_MEANING: Record<string, string> = {
   // German
   wohnen: "to live", sein: "to be", haben: "to have", gehen: "to go (on foot)",
   können: "can, to be able to", wollen: "to want", müssen: "must, to have to", möchten: "would like",
+  dürfen: "may, to be allowed to", sollen: "should, to be supposed to",
   fahren: "to go (by vehicle), to drive", schlafen: "to sleep", essen: "to eat", sprechen: "to speak",
   nehmen: "to take", lesen: "to read", sehen: "to see", trinken: "to drink", schreiben: "to write",
   finden: "to find", helfen: "to help",
