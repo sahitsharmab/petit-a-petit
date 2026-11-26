@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 import { ArrowRight, Compass, Lightbulb, Sparkles, Target } from "lucide-react";
 import type { LessonIntro as Intro } from "@/lib/services/lessons";
 import { Button } from "@/components/ui/button";
+import { spokenCell } from "@/lib/content/speak-table";
 import { SpeakButton } from "../speech/speak-button";
 
 export function LessonIntro({ intro, eyebrow, title, subtitle, count, minutes, onStart, speak }: {
@@ -53,22 +54,21 @@ export function LessonIntro({ intro, eyebrow, title, subtitle, count, minutes, o
                   <tr>{sec.table.headers.map((h, i) => <th key={i} scope="col" className="px-3.5 py-2 font-medium">{h}</th>)}</tr>
                 </thead>
                 <tbody>
-                  {sec.table.rows.map((row, r) => {
-                    const last = sec.table!.headers.length - 1;
-                    const speakCol = /notes|english/i.test(sec.table!.headers[last] ?? "") ? 0 : last;
-                    return (
+                  {sec.table.rows.map((row, r) => (
                     <tr key={r} className="border-t border-border">
-                      {row.map((cell, c) => (
-                        <td key={c} className={c === speakCol ? "px-3.5 py-2 font-medium" : "px-3.5 py-2"} lang={c === speakCol ? tl : undefined}>
-                          <span className="inline-flex items-center gap-1">
-                            {cell}
-                            {c === speakCol && /[a-zà-ü]/i.test(cell) && <SpeakButton onSpeak={() => speak(cell.replace(/\(.*?\)/g, ""))} className="size-6 [&_svg]:size-3.5" label={`Listen: ${cell}`} />}
-                          </span>
-                        </td>
-                      ))}
+                      {row.map((cell, c) => {
+                        const say = spokenCell(sec.table!.headers, row, c);
+                        return (
+                          <td key={c} className={say ? "px-3.5 py-2 font-medium" : "px-3.5 py-2"} lang={say ? tl : undefined}>
+                            <span className="inline-flex items-center gap-1">
+                              {cell}
+                              {say && <SpeakButton onSpeak={() => speak(say)} className="size-6 [&_svg]:size-3.5" label={`Listen: ${say}`} />}
+                            </span>
+                          </td>
+                        );
+                      })}
                     </tr>
-                    );
-                  })}
+                  ))}
                 </tbody>
               </table>
             </div>
