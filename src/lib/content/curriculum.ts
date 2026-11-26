@@ -1,6 +1,7 @@
 import type { SkillDef, WeekDef } from "./types";
 import type { Lang } from "./languages";
 import { DE_SKILLS, DE_WEEKS } from "./de/curriculum";
+import { withMaterial } from "./fr-material";
 
 export const WEEKS: WeekDef[] = [
   { number: 1, title: "First sentences", focus: "Subject pronouns, regular -ER verbs, basic sentences", cefr: "A1", description: "Who does what: je, tu, il, elle… and the most common verb pattern in French." },
@@ -17,7 +18,8 @@ export const WEEKS: WeekDef[] = [
   { number: 12, title: "Course review", focus: "Comprehensive review and a mixed grammar and vocabulary check", cefr: "A2", description: "Consolidate everything and see which topics need another pass." },
 ];
 
-const S = (s: SkillDef) => s;
+/** French topics get their extra examples and tables from fr-material.ts. */
+const S = (s: SkillDef): SkillDef => ({ ...s, explanation: withMaterial(s.id, s.explanation) });
 
 export const SKILLS: SkillDef[] = [
   // ───────────────────────────── Week 1 ─────────────────────────────

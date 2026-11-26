@@ -5,7 +5,7 @@
  */
 const PRONOUN = /^(je|j'|tu|il|elle|on|nous|vous|ils|elles|ich|du|er|es|sie|wir|ihr)(\s*\/.*)?$/i;
 const NOT_SPOKEN = /^(english|notes?|ending|pattern|change|subject)$/i;
-const FIRST_COL_SPOKEN = /^(french|german|infinitive)$/i;
+const FIRST_COL_SPOKEN = /^(french|german|infinitive|masculine)$/i;
 
 export function spokenCell(headers: string[], row: string[], c: number): string | null {
   const header = (headers[c] ?? "").trim();

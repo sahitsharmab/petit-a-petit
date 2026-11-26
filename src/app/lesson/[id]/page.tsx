@@ -8,6 +8,7 @@ import { getOrStartSession, type SessionSummary } from "@/lib/services/sessions"
 import { getSettings } from "@/lib/services/stats";
 import { withGlosses } from "@/lib/services/words";
 import { lessonWords } from "@/lib/content/lexicon";
+import { getSkill } from "@/lib/content/curriculum";
 import { formatDateLong } from "@/lib/learning/dates";
 import { LessonPlayer } from "@/components/lesson/lesson-player";
 import { CourseProvider } from "@/components/course/course-context";
@@ -31,9 +32,11 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
   if (!lesson) notFound();
   const [rawExercises, session, settings] = await Promise.all([getLessonExercises(db, id), getOrStartSession(db, id), getSettings(db)]);
   const exercises = (await withGlosses(db, rawExercises)).map(toPublic);
-  // Verbs heading the page's own tables are already explained there.
-  const explained = lesson.intro.explanation.flatMap((s) => s.table?.headers ?? []);
-  const intro = { ...lesson.intro, words: lessonWords(rawExercises, db.lang, explained) };
+  // Words the page's own tables already teach (verb headings, French columns) aren't listed again.
+  // The page always shows the topic's current material, so lessons made before an update get it too.
+  const explanation = getSkill(lesson.primarySkillId).explanation;
+  const explained = explanation.flatMap((s) => [...(s.table?.headers ?? []), ...(s.table?.rows.map((r) => r[0]) ?? [])]);
+  const intro = { ...lesson.intro, explanation, words: lessonWords(rawExercises, db.lang, explained) };
   const eyebrow = lesson.kind === "daily"
     ? `Week ${lesson.weekNumber} · Day ${lesson.dayNumber} — ${formatDateLong(lesson.lessonDate)}`
     : lesson.kind === "review" ? "Review session" : `Practice · Week ${lesson.weekNumber}`;

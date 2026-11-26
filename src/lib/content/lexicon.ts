@@ -586,14 +586,18 @@ function findAny(text: string, forms: string[]) {
   return best;
 }
 
-/** Words a vocabulary topic teaches are what its exercises test: they get no hint there. */
+/**
+ * Words a vocabulary topic teaches are what its exercises test: they get no hint there.
+ * Only the explanations and tables count: example sentences also hold everyday words
+ * ("chiens" in « J'ai peur des chiens ») that the topic doesn't test.
+ */
 const taught = new Map<string, string>();
 function taughtText(skillId: string): string {
   let t = taught.get(skillId);
   if (t === undefined) {
     const s = getSkill(skillId);
     t = s.category !== "vocabulary" ? "" : s.explanation.map((x) =>
-      [x.body, ...(x.table?.rows.flat() ?? []), ...(x.examples?.map((e) => e.fr) ?? [])].join(" ")).join(" ");
+      [x.body, ...(x.table?.rows.map((r) => r[0]) ?? [])].join(" ")).join(" ");
     taught.set(skillId, t);
   }
   return t;

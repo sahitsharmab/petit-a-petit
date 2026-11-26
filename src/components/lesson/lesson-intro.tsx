@@ -70,7 +70,7 @@ export function LessonIntro({ intro, eyebrow, title, subtitle, count, minutes, o
                               {cell}
                               {say && <SpeakButton onSpeak={() => speak(say)} className="size-6 [&_svg]:size-3.5" label={`Listen: ${say}`} />}
                             </span>
-                            {meaningOf(cell) && <span lang="en" className="block text-xs font-normal text-muted">{meaningOf(cell)}</span>}
+                            {meaningOf(cell) && !sec.table!.headers.some((h) => /english/i.test(h)) && <span lang="en" className="block text-xs font-normal text-muted">{meaningOf(cell)}</span>}
                           </td>
                         );
                       })}
