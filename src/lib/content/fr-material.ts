@@ -289,10 +289,10 @@ export const FR_MATERIAL: Record<string, Material> = {
     patch: {
       "Learn them in families": {
         body: "Verbs in the same family change the same way. comprendre and apprendre work exactly like prendre; revenir and devenir like venir. partir, sortir and dormir drop their last consonant before -s in the singular (je pars, je sors, je dors) but keep it in the plural (nous partons, nous sortons, nous dormons).",
-        table: { headers: ["", "je", "nous", "ils"], rows: [
-          ["prendre", "prends", "prenons", "prennent"], ["comprendre", "comprends", "comprenons", "comprennent"],
-          ["venir", "viens", "venons", "viennent"], ["partir", "pars", "partons", "partent"],
-          ["sortir", "sors", "sortons", "sortent"], ["dormir", "dors", "dormons", "dorment"],
+        table: { headers: ["", "je", "tu", "il / elle", "nous", "vous", "ils / elles"], rows: [
+          ["prendre", "prends", "prends", "prend", "prenons", "prenez", "prennent"], ["comprendre", "comprends", "comprends", "comprend", "comprenons", "comprenez", "comprennent"],
+          ["venir", "viens", "viens", "vient", "venons", "venez", "viennent"], ["partir", "pars", "pars", "part", "partons", "partez", "partent"],
+          ["sortir", "sors", "sors", "sort", "sortons", "sortez", "sortent"], ["dormir", "dors", "dors", "dort", "dormons", "dormez", "dorment"],
         ] },
         more: [
         { fr: "Je prends le bus.", en: "I take the bus." },
@@ -314,7 +314,7 @@ export const FR_MATERIAL: Record<string, Material> = {
         { fr: "J'écris un e-mail.", en: "I'm writing an email." },
       ] },
     },
-    add: [{ heading: "Tu, il and vous", body: "The tables show je, nous and ils. The other three follow from them. tu: same as je (tu prends, tu dors). il / elle: drop the -s; add -t unless the stem already ends in d or t (il dort, il part, il vient, il sait, il voit, but il prend, il comprend, il met). vous: nous form with -ez instead of -ons (vous dormez, vous prenez). One exception: vous dites.", examples: [
+    add: [{ heading: "A shortcut for tu, il and vous", body: "You don't need to learn six forms separately. tu: same as je (tu prends, tu dors). il / elle: drop the -s; add -t unless the stem already ends in d or t (il dort, il part, il vient, il sait, il voit, but il prend, il comprend, il met). vous: nous form with -ez instead of -ons (vous dormez, vous prenez). One exception: vous dites.", examples: [
       { fr: "Tu dors ?", en: "Are you sleeping?" },
       { fr: "Elle part demain.", en: "She's leaving tomorrow." },
       { fr: "Il prend un café.", en: "He's having a coffee." },

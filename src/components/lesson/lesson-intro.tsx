@@ -1,4 +1,5 @@
 "use client";
+import * as React from "react";
 import { useCourse } from "@/components/course/course-context";
 import { motion } from "motion/react";
 import { ArrowRight, BookOpen, Compass, Lightbulb, Sparkles, Target } from "lucide-react";
@@ -48,7 +49,7 @@ export function LessonIntro({ intro, eyebrow, title, subtitle, count, minutes, o
         <section key={sec.heading} className="card space-y-3 p-5 sm:p-6">
           <h2 className="font-display text-xl font-semibold">{sec.heading}</h2>
           {sec.body && <p className="leading-relaxed text-pretty text-ink/90">{sec.body}</p>}
-          {sec.table && (
+          {sec.table && isVerbGrid(sec.table.headers) ? <VerbCards table={sec.table} speak={speak} /> : sec.table && (
             <div className="overflow-x-auto rounded-xl border border-border">
               <table className="w-full text-left text-sm">
                 <thead className="bg-surface-2/70 text-muted">
@@ -117,6 +118,40 @@ export function LessonIntro({ intro, eyebrow, title, subtitle, count, minutes, o
         </div>
       </div>
     </motion.div>
+  );
+}
+
+/** A table with one verb per row and all six persons as columns is too wide for a phone, so it becomes one card per verb. */
+const isVerbGrid = (h: string[]) => h.length === 7 && /^(je|ich)$/i.test(h[1]?.trim() ?? "");
+
+function VerbCards({ table, speak }: { table: { headers: string[]; rows: string[][] }; speak: (t: string) => void }) {
+  const tl = useCourse().code;
+  // Singular on the left, plural on the right: je / nous, tu / vous, il / ils.
+  const order = [1, 4, 2, 5, 3, 6];
+  return (
+    <ul className="grid gap-3 sm:grid-cols-2">
+      {table.rows.map((row) => (
+        <li key={row[0]} className="rounded-xl border border-border bg-surface-2/40 px-3 py-3 sm:px-3.5">
+          <p className="mb-2 flex items-baseline gap-2">
+            <span className="font-semibold" lang={tl}>{row[0]}</span>
+            {meaningOf(row[0]) && <span className="text-xs text-muted">{meaningOf(row[0])}</span>}
+          </p>
+          {/* Six auto-sized columns (label, form, speaker × 2) so long forms like "comprennent" never wrap on a phone. */}
+          <dl className="grid grid-cols-[auto_auto_auto_auto_auto_1fr] items-center gap-x-1.5 gap-y-0.5 whitespace-nowrap text-sm">
+            {order.map((c, i) => {
+              const say = spokenCell(table.headers, row, c);
+              return (
+                <React.Fragment key={c}>
+                  <dt className={`text-xs text-subtle ${i % 2 ? "pl-2 sm:pl-4" : ""}`}>{table.headers[c].split("/")[0].trim()}</dt>
+                  <dd className="font-medium" lang={tl}>{row[c]}</dd>
+                  {say ? <SpeakButton onSpeak={() => speak(say)} className="size-6 [&_svg]:size-3.5" label={`Listen: ${say}`} /> : <span />}
+                </React.Fragment>
+              );
+            })}
+          </dl>
+        </li>
+      ))}
+    </ul>
   );
 }
 
