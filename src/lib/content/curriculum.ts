@@ -314,7 +314,7 @@ export const SKILLS: SkillDef[] = [
     summary: "fait, pris, eu, été, vu, dit, mis, bu, lu, écrit, pu, voulu, dû.",
     objectives: ["Use the most common irregular participles", "Talk about what you did"],
     explanation: [
-      { heading: "Memorise these", body: "", table: { headers: ["infinitive", "participle", "example"], rows: [["faire", "fait", "j'ai fait"], ["prendre", "pris", "j'ai pris"], ["avoir", "eu", "j'ai eu"], ["être", "été", "j'ai été"], ["voir", "vu", "j'ai vu"], ["dire", "dit", "j'ai dit"], ["mettre", "mis", "j'ai mis"], ["boire", "bu", "j'ai bu"], ["lire", "lu", "j'ai lu"], ["écrire", "écrit", "j'ai écrit"], ["pouvoir", "pu", "j'ai pu"], ["vouloir", "voulu", "j'ai voulu"], ["devoir", "dû", "j'ai dû"]] } },
+      { heading: "Memorise these", body: "", table: { headers: ["infinitive", "participle", "example"], rows: [["faire", "fait", "j'ai fait"], ["prendre", "pris", "j'ai pris"], ["comprendre", "compris", "j'ai compris"], ["apprendre", "appris", "j'ai appris"], ["avoir", "eu", "j'ai eu"], ["être", "été", "j'ai été"], ["voir", "vu", "j'ai vu"], ["dire", "dit", "j'ai dit"], ["mettre", "mis", "j'ai mis"], ["boire", "bu", "j'ai bu"], ["lire", "lu", "j'ai lu"], ["écrire", "écrit", "j'ai écrit"], ["pouvoir", "pu", "j'ai pu"], ["vouloir", "voulu", "j'ai voulu"], ["devoir", "dû", "j'ai dû"]] } },
     ],
     practice: { conj: { verbs: ["faire", "prendre", "avoir", "être", "voir", "dire", "mettre", "boire", "lire", "écrire", "comprendre", "apprendre"], tense: "passe_compose" }, types: ["multiple_choice", "conjugation", "fill_blank", "translation", "listening"] },
   }),

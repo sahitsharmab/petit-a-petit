@@ -6,6 +6,7 @@ export const VERB_MEANING: Record<string, string> = {
   savoir: "to know (a fact)", voir: "to see", dire: "to say", mettre: "to put", boire: "to drink",
   lire: "to read", écrire: "to write", prendre: "to take", finir: "to finish", attendre: "to wait (for)",
   "se lever": "to get up",
+  comprendre: "to understand", apprendre: "to learn", venir: "to come", partir: "to leave", sortir: "to go out", dormir: "to sleep",
   // German
   wohnen: "to live", sein: "to be", haben: "to have", gehen: "to go (on foot)",
   können: "can, to be able to", wollen: "to want", müssen: "must, to have to", möchten: "would like",

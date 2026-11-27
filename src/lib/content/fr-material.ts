@@ -287,7 +287,14 @@ export const FR_MATERIAL: Record<string, Material> = {
   // ───────────── Week 5 ─────────────
   "w5-irregular": {
     patch: {
-      "Learn them in families": { more: [
+      "Learn them in families": {
+        body: "Verbs in the same family change the same way. comprendre and apprendre work exactly like prendre; revenir and devenir like venir. partir, sortir and dormir drop their last consonant before -s in the singular (je pars, je sors, je dors) but keep it in the plural (nous partons, nous sortons, nous dormons).",
+        table: { headers: ["", "je", "nous", "ils"], rows: [
+          ["prendre", "prends", "prenons", "prennent"], ["comprendre", "comprends", "comprenons", "comprennent"],
+          ["venir", "viens", "venons", "viennent"], ["partir", "pars", "partons", "partent"],
+          ["sortir", "sors", "sortons", "sortent"], ["dormir", "dors", "dormons", "dorment"],
+        ] },
+        more: [
         { fr: "Je prends le bus.", en: "I take the bus." },
         { fr: "Nous apprenons le français.", en: "We're learning French." },
         { fr: "Tu comprends ?", en: "Do you understand?" },
@@ -295,6 +302,8 @@ export const FR_MATERIAL: Record<string, Material> = {
         { fr: "Je pars demain.", en: "I'm leaving tomorrow." },
         { fr: "Tu sors ce soir ?", en: "Are you going out tonight?" },
         { fr: "Il dort.", en: "He's sleeping." },
+        { fr: "Nous dormons bien.", en: "We sleep well." },
+        { fr: "Nous partons à huit heures.", en: "We're leaving at eight." },
       ] },
       "The others": { more: [
         { fr: "Je sais nager.", en: "I can swim. (know how to)" },
@@ -305,7 +314,13 @@ export const FR_MATERIAL: Record<string, Material> = {
         { fr: "J'écris un e-mail.", en: "I'm writing an email." },
       ] },
     },
-    add: [{ heading: "What they mean", body: "", table: t([
+    add: [{ heading: "Tu, il and vous", body: "The tables show je, nous and ils. The other three follow from them. tu: same as je (tu prends, tu dors). il / elle: drop the -s; add -t unless the stem already ends in d or t (il dort, il part, il vient, il sait, il voit, but il prend, il comprend, il met). vous: nous form with -ez instead of -ons (vous dormez, vous prenez). One exception: vous dites.", examples: [
+      { fr: "Tu dors ?", en: "Are you sleeping?" },
+      { fr: "Elle part demain.", en: "She's leaving tomorrow." },
+      { fr: "Il prend un café.", en: "He's having a coffee." },
+      { fr: "Vous venez avec nous ?", en: "Are you coming with us?" },
+      { fr: "Qu'est-ce que vous dites ?", en: "What are you saying?" },
+    ] }, { heading: "What they mean", body: "", table: t([
       ["prendre", "to take"], ["apprendre", "to learn"], ["comprendre", "to understand"], ["venir", "to come"], ["partir", "to leave"],
       ["sortir", "to go out"], ["dormir", "to sleep"], ["savoir", "to know (a fact, how to)"], ["connaître", "to know (a person, a place)"],
       ["voir", "to see"], ["dire", "to say"], ["mettre", "to put, to put on"], ["boire", "to drink"], ["lire", "to read"], ["écrire", "to write"],
