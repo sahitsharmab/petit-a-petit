@@ -1,4 +1,4 @@
-import type { ExplanationSection } from "./types";
+import type { ExplanationSection, RulePoint } from "./types";
 
 type Ex = { fr: string; en: string };
 type Table = { headers: string[]; rows: string[][] };
@@ -8,7 +8,7 @@ type Table = { headers: string[]; rows: string[][] };
  * replace that section's own; `add` appends new sections at the end.
  */
 export interface Material {
-  patch?: Record<string, { more?: Ex[]; table?: Table; body?: string }>;
+  patch?: Record<string, { more?: Ex[]; table?: Table; body?: string; points?: RulePoint[] }>;
   add?: ExplanationSection[];
 }
 
@@ -288,7 +288,12 @@ export const FR_MATERIAL: Record<string, Material> = {
   "w5-irregular": {
     patch: {
       "Learn them in families": {
-        body: "Verbs in the same family change the same way. comprendre and apprendre work exactly like prendre; revenir and devenir like venir. partir, sortir and dormir drop their last consonant before -s in the singular (je pars, je sors, je dors) but keep it in the plural (nous partons, nous sortons, nous dormons).",
+        body: "Verbs in the same family change the same way.",
+        points: [
+          { label: "like prendre", rule: "comprendre, apprendre", eg: "je comprends, nous apprenons" },
+          { label: "like venir", rule: "revenir, devenir", eg: "je reviens, ils deviennent" },
+          { label: "partir, sortir, dormir", rule: "Singular: drop the last consonant", eg: "je pars, je sors, je dors", note: "Plural keeps it: nous partons, nous dormons" },
+        ],
         table: { headers: ["", "je", "tu", "il / elle", "nous", "vous", "ils / elles"], rows: [
           ["prendre", "prends", "prends", "prend", "prenons", "prenez", "prennent"], ["comprendre", "comprends", "comprends", "comprend", "comprenons", "comprenez", "comprennent"],
           ["venir", "viens", "viens", "vient", "venons", "venez", "viennent"], ["partir", "pars", "pars", "part", "partons", "partez", "partent"],
@@ -314,7 +319,11 @@ export const FR_MATERIAL: Record<string, Material> = {
         { fr: "J'écris un e-mail.", en: "I'm writing an email." },
       ] },
     },
-    add: [{ heading: "A shortcut for tu, il and vous", body: "You don't need to learn six forms separately. tu: same as je (tu prends, tu dors). il / elle: drop the -s; add -t unless the stem already ends in d or t (il dort, il part, il vient, il sait, il voit, but il prend, il comprend, il met). vous: nous form with -ez instead of -ons (vous dormez, vous prenez). One exception: vous dites.", examples: [
+    add: [{ heading: "A shortcut for tu, il and vous", body: "Learn je and nous. The other three come from them.", points: [
+      { label: "tu", rule: "Same as je", eg: "tu prends, tu dors" },
+      { label: "il / elle", rule: "Take je, swap -s for -t", eg: "il dort, il vient, il sait", note: "Ends in d or t already? Just drop the -s: il prend, il met" },
+      { label: "vous", rule: "Take nous, swap -ons for -ez", eg: "vous dormez, vous prenez", note: "Exception: vous dites" },
+    ], examples: [
       { fr: "Tu dors ?", en: "Are you sleeping?" },
       { fr: "Elle part demain.", en: "She's leaving tomorrow." },
       { fr: "Il prend un café.", en: "He's having a coffee." },
@@ -596,7 +605,7 @@ export function withMaterial(id: string, sections: ExplanationSection[]): Explan
   const out = sections.map((s) => {
     const p = m.patch?.[s.heading];
     if (!p) return s;
-    return { ...s, ...(p.body !== undefined && { body: p.body }), ...(p.table && { table: p.table }), ...(p.more && { examples: [...(s.examples ?? []), ...p.more] }) };
+    return { ...s, ...(p.body !== undefined && { body: p.body }), ...(p.points && { points: p.points }), ...(p.table && { table: p.table }), ...(p.more && { examples: [...(s.examples ?? []), ...p.more] }) };
   });
   return [...out, ...(m.add ?? [])];
 }

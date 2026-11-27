@@ -93,9 +93,14 @@ export function toPublic(e: Exercise): PublicExercise {
 export interface ExplanationSection {
   heading: string;
   body: string;
+  /** Short rules shown as a list instead of a paragraph: easier to scan than a dense body. */
+  points?: RulePoint[];
   table?: { headers: string[]; rows: string[][] };
   examples?: { fr: string; en: string }[];
 }
+
+/** One rule: what it applies to, what to do, and a couple of forms in the course language. */
+export interface RulePoint { label: string; rule: string; eg?: string; note?: string }
 
 export interface PracticeSpec {
   /** Conjugation-driven practice (enables generated drills). */

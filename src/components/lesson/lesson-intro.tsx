@@ -6,6 +6,7 @@ import { ArrowRight, BookOpen, Compass, Lightbulb, Sparkles, Target } from "luci
 import type { LessonIntro as Intro } from "@/lib/services/lessons";
 import { Button } from "@/components/ui/button";
 import { spokenCell } from "@/lib/content/speak-table";
+import type { RulePoint } from "@/lib/content/types";
 import { meaningOf } from "@/lib/content/verb-meanings";
 import { SpeakButton } from "../speech/speak-button";
 
@@ -49,6 +50,7 @@ export function LessonIntro({ intro, eyebrow, title, subtitle, count, minutes, o
         <section key={sec.heading} className="card space-y-3 p-5 sm:p-6">
           <h2 className="font-display text-xl font-semibold">{sec.heading}</h2>
           {sec.body && <p className="leading-relaxed text-pretty text-ink/90">{sec.body}</p>}
+          {sec.points && <RulePoints points={sec.points} speak={speak} />}
           {sec.table && isVerbGrid(sec.table.headers) ? <VerbCards table={sec.table} speak={speak} /> : sec.table && (
             <div className="overflow-x-auto rounded-xl border border-border">
               <table className="w-full text-left text-sm">
@@ -121,6 +123,30 @@ export function LessonIntro({ intro, eyebrow, title, subtitle, count, minutes, o
   );
 }
 
+/** Rules as separate rows (label → what to do → forms), so each fits in one glance instead of a long paragraph. */
+function RulePoints({ points, speak }: { points: RulePoint[]; speak: (t: string) => void }) {
+  const tl = useCourse().code;
+  return (
+    <ul className="space-y-2">
+      {points.map((p) => (
+        <li key={p.label} className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface-2/40 px-3.5 py-3 sm:flex-row sm:items-start sm:gap-4">
+          <span className="w-fit shrink-0 rounded-lg bg-primary-soft px-2.5 py-0.5 font-semibold text-primary sm:mt-0.5 sm:w-36 sm:text-center" lang={tl}>{p.label}</span>
+          <div className="min-w-0 space-y-1">
+            <p className="font-medium">{p.rule}</p>
+            {p.eg && (
+              <p className="flex items-center gap-1 text-[0.95rem] text-ink/80" lang={tl}>
+                <span>{p.eg}</span>
+                <SpeakButton onSpeak={() => speak(p.eg!)} className="size-6 [&_svg]:size-3.5" label={`Listen: ${p.eg}`} />
+              </p>
+            )}
+            {p.note && <p className="text-sm text-muted">{p.note}</p>}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** A table with one verb per row and all six persons as columns is too wide for a phone, so it becomes one card per verb. */
 const isVerbGrid = (h: string[]) => h.length === 7 && /^(je|ich)$/i.test(h[1]?.trim() ?? "");
 
@@ -129,7 +155,7 @@ function VerbCards({ table, speak }: { table: { headers: string[]; rows: string[
   // Singular on the left, plural on the right: je / nous, tu / vous, il / ils.
   const order = [1, 4, 2, 5, 3, 6];
   return (
-    <ul className="grid gap-3 sm:grid-cols-2">
+    <ul className="grid gap-3">
       {table.rows.map((row) => (
         <li key={row[0]} className="rounded-xl border border-border bg-surface-2/40 px-3 py-3 sm:px-3.5">
           <p className="mb-2 flex items-baseline gap-2">

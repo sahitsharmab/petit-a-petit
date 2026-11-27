@@ -597,7 +597,7 @@ function taughtText(skillId: string): string {
   if (t === undefined) {
     const s = getSkill(skillId);
     t = s.category !== "vocabulary" ? "" : s.explanation.map((x) =>
-      [x.body, ...(x.table?.rows.map((r) => r[0]) ?? [])].join(" ")).join(" ");
+      [x.body, ...(x.points?.flatMap((p) => [p.label, p.rule, p.eg ?? "", p.note ?? ""]) ?? []), ...(x.table?.rows.map((r) => r[0]) ?? [])].join(" ")).join(" ");
     taught.set(skillId, t);
   }
   return t;
